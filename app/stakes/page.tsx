@@ -35,8 +35,8 @@ export default function StakesPage() {
         .from('stakes').select('*, pacts(*), sprints(*)').eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
       setStakes((data as StakeWithDetails[]) ?? []);
-    } catch {
-      // Leave empty state
+    } catch (e) {
+      console.error('Failed to load stakes:', e);
     } finally {
       setLoading(false);
     }

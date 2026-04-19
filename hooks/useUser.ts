@@ -51,7 +51,25 @@ export function useUser() {
     
     loadUser();
     
-    return () => { mounted = false; };
+    // Listen for auth state changes to keep user in sync
+    const supabase = createClient();
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
+      console.log('[useUser] Auth state change:', event, session?.user?.id);
+      if (mounted) {
+        if (session?.user) {
+          setUser(session.user);
+          fetchProfile(supabase, session.user.id).then(setProfile);
+        } else {
+          setUser(null);
+          setProfile(null);
+        }
+      }
+    });
+    
+    return () => {
+      mounted = false;
+      subscription.unsubscribe();
+    };
   }, []);
 
   return { user, profile, userLoading: loading, loading };

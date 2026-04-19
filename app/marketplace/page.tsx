@@ -46,25 +46,29 @@ export default function MarketplacePage() {
         .in('status', ['forming', 'vetting', 'active'])
         .order('created_at', { ascending: false });
       setPacts((data as PactWithMembers[]) ?? []);
-    } catch {
-      // Network error — leave empty state
+    } catch (e) {
+      console.error('Failed to load marketplace pacts:', e);
     }
   }, []);
 
   const loadUserState = useCallback(async () => {
     if (!user) return;
     const supabase = createClient();
-    const { data: memberships } = await supabase
-      .from('pact_members')
-      .select('pact_id')
-      .eq('user_id', user.id)
-      .eq('status', 'active');
-    const { data: applications } = await supabase
-      .from('pact_applications')
-      .select('pact_id')
-      .eq('user_id', user.id);
-    setMemberPactIds(new Set(memberships?.map((m) => m.pact_id) ?? []));
-    setAppliedIds(new Set(applications?.map((a) => a.pact_id) ?? []));
+    try {
+      const { data: memberships } = await supabase
+        .from('pact_members')
+        .select('pact_id')
+        .eq('user_id', user.id)
+        .eq('status', 'active');
+      const { data: applications } = await supabase
+        .from('pact_applications')
+        .select('pact_id')
+        .eq('user_id', user.id);
+      setMemberPactIds(new Set(memberships?.map((m) => m.pact_id) ?? []));
+      setAppliedIds(new Set(applications?.map((a) => a.pact_id) ?? []));
+    } catch (e) {
+      console.error('Failed to load user state:', e);
+    }
   }, [user]);
 
   useEffect(() => { load(); }, [load]);

@@ -14,13 +14,41 @@ interface SidebarProps {
   activePacts?: { id: string; name: string }[];
 }
 
-export default function Sidebar({ activePacts = [] }: SidebarProps) {
+export default function Sidebar({ activePacts: propActivePacts }: SidebarProps) {
   const pathname = usePathname();
   const router = useRouter();
   const { user, profile } = useUser();
   const { unreadCount } = useNotifications(user?.id);
   const [pactsOpen, setPactsOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  const [internalActivePacts, setInternalActivePacts] = useState<{ id: string; name: string }[]>([]);
+
+  // Fetch active pacts from API if not provided as prop
+  useEffect(() => {
+    if (propActivePacts && propActivePacts.length > 0) {
+      setInternalActivePacts(propActivePacts);
+      return;
+    }
+
+    if (!user) return;
+
+    const loadPacts = async () => {
+      try {
+        const response = await fetch('/api/user/pacts');
+        if (response.ok) {
+          const memberRows = await response.json();
+          const pacts = (memberRows ?? [])
+            .map((m: any) => m.pacts)
+            .filter((p: any) => !!p);
+          setInternalActivePacts(pacts.map((p: any) => ({ id: p.id, name: p.name })));
+        }
+      } catch (e) {
+        console.error('Failed to fetch active pacts:', e);
+      }
+    };
+
+    loadPacts();
+  }, [user, propActivePacts]);
 
   const isActive = (path: string) => pathname === path || pathname.startsWith(path + '/');
 
@@ -103,9 +131,9 @@ export default function Sidebar({ activePacts = [] }: SidebarProps) {
               className={cn('ml-auto transition-transform', pactsOpen && 'rotate-180')}
             />
           </button>
-          {pactsOpen && activePacts.length > 0 && (
+          {pactsOpen && internalActivePacts.length > 0 && (
             <div className="ml-7 mt-1 space-y-0.5">
-              {activePacts.map((p) => (
+              {internalActivePacts.map((p) => (
                 <Link
                   key={p.id}
                   href={`/pacts/${p.id}`}
@@ -121,7 +149,7 @@ export default function Sidebar({ activePacts = [] }: SidebarProps) {
               ))}
             </div>
           )}
-          {pactsOpen && activePacts.length === 0 && (
+          {pactsOpen && internalActivePacts.length === 0 && (
             <p className="ml-7 mt-1 text-xs text-[#8FA38F] px-3 py-1">No active pacts</p>
           )}
         </div>

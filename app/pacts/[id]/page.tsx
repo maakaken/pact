@@ -106,46 +106,64 @@ export default function PactOverviewPage() {
     }
 
     // Fetch notifications
-    const { data: notifs } = await supabase
-      .from('notifications')
-      .select('*')
-      .eq('user_id', userId)
-      .eq('pact_id', pactId)
-      .order('created_at', { ascending: false })
-      .limit(10);
-    setNotifications(notifs ?? []);
+    try {
+      const { data: notifs } = await supabase
+        .from('notifications')
+        .select('*')
+        .eq('user_id', userId)
+        .eq('pact_id', pactId)
+        .order('created_at', { ascending: false })
+        .limit(10);
+      setNotifications(notifs ?? []);
+    } catch (e) {
+      console.error('Failed to fetch notifications:', e);
+    }
 
     // Fetch my goal
-    const { data: goal } = await supabase
-      .from('goals')
-      .select('*')
-      .eq('pact_id', pactId)
-      .eq('user_id', userId)
-      .single();
-    setMyGoal(goal ?? null);
+    try {
+      const { data: goal } = await supabase
+        .from('goals')
+        .select('*')
+        .eq('pact_id', pactId)
+        .eq('sprint_number', pact?.current_sprint ?? 0)
+        .eq('user_id', userId)
+        .maybeSingle();
+      setMyGoal(goal ?? null);
+    } catch (e) {
+      console.error('Failed to fetch goal:', e);
+    }
 
     // Check if I have a submission
-    if (pact.current_sprint) {
-      const { data: submission } = await supabase
-        .from('submissions')
-        .select('user_id')
-        .eq('sprint_id', pact.current_sprint)
-        .eq('user_id', userId)
-        .single();
-      setHasSubmission(!!submission);
+    const sprint = pact?.currentSprint ?? null;
+    if (sprint) {
+      try {
+        const { data: submission } = await supabase
+          .from('submissions')
+          .select('*')
+          .eq('sprint_id', sprint.id)
+          .eq('user_id', userId)
+          .maybeSingle();
+        setHasSubmission(!!submission);
+      } catch (e) {
+        console.error('Failed to fetch submission:', e);
+      }
     }
 
     // Fetch member submissions
     if (pact.current_sprint) {
-      const { data: submissions } = await supabase
-        .from('submissions')
-        .select('user_id')
-        .eq('sprint_id', pact.current_sprint);
-      const subMap: Record<string, boolean> = {};
-      submissions?.forEach((s: any) => {
-        subMap[s.user_id] = true;
-      });
-      setMemberSubmissions(subMap);
+      try {
+        const { data: submissions } = await supabase
+          .from('submissions')
+          .select('user_id')
+          .eq('sprint_id', pact.current_sprint);
+        const subMap: Record<string, boolean> = {};
+        submissions?.forEach((s: any) => {
+          subMap[s.user_id] = true;
+        });
+        setMemberSubmissions(subMap);
+      } catch (e) {
+        console.error('Failed to fetch member submissions:', e);
+      }
     }
 
     setExtraLoading(false);

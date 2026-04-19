@@ -40,12 +40,16 @@ export default function PactsPage() {
 
       const supabase = createClient();
 
-      // Get all user's pacts
-      const { data: memberRows } = await supabase
-        .from('pact_members')
-        .select('*, pacts(*)')
-        .eq('user_id', user.id)
-        .eq('status', 'active');
+      // Get all user's pacts from API
+      let memberRows = null;
+      try {
+        const response = await fetch('/api/user/pacts');
+        if (response.ok) {
+          memberRows = await response.json();
+        }
+      } catch (e) {
+        console.error('Failed to fetch pact memberships:', e);
+      }
 
       if (!memberRows) {
         setLoading(false);
@@ -64,34 +68,46 @@ export default function PactsPage() {
       const pactIds = userPacts.map((p) => p.id);
 
       // Get sprints
-      const sprintResults = await Promise.all(
-        userPacts.map((p) =>
-          supabase.from('sprints').select('*').eq('pact_id', p.id).eq('sprint_number', p.current_sprint).maybeSingle()
-        )
-      );
-      const sprintMap = new Map<string, Sprint | null>();
-      userPacts.forEach((p, i) => sprintMap.set(p.id, sprintResults[i].data ?? null));
+      let sprintMap = new Map<string, Sprint | null>();
+      try {
+        const sprintResults = await Promise.all(
+          userPacts.map((p) =>
+            supabase.from('sprints').select('*').eq('pact_id', p.id).eq('sprint_number', p.current_sprint).maybeSingle()
+          )
+        );
+        userPacts.forEach((p, i) => sprintMap.set(p.id, sprintResults[i].data ?? null));
+      } catch (e) {
+        console.error('Failed to fetch sprints:', e);
+      }
 
       // Get members
-      const { data: allMembers } = await supabase
-        .from('pact_members')
-        .select('*, profiles(*)')
-        .in('pact_id', pactIds)
-        .eq('status', 'active');
-
-      const membersByPact = new Map<string, (PactMember & { profiles: Profile })[]>();
-      (allMembers as any[] ?? []).forEach((m) => {
-        membersByPact.set(m.pact_id, [...(membersByPact.get(m.pact_id) ?? []), m]);
-      });
+      let membersByPact = new Map<string, (PactMember & { profiles: Profile })[]>();
+      try {
+        const { data: allMembers } = await supabase
+          .from('pact_members')
+          .select('*, profiles(*)')
+          .in('pact_id', pactIds)
+          .eq('status', 'active');
+        (allMembers as any[] ?? []).forEach((m) => {
+          membersByPact.set(m.pact_id, [...(membersByPact.get(m.pact_id) ?? []), m]);
+        });
+      } catch (e) {
+        console.error('Failed to fetch members:', e);
+      }
 
       // Get submissions
-      const sprintIds = Array.from(sprintMap.values())
-        .filter((s): s is Sprint => !!s)
-        .map((s) => s.id);
-      const { data: submissions } = sprintIds.length
-        ? await supabase.from('submissions').select('sprint_id').eq('user_id', user.id).in('sprint_id', sprintIds)
-        : { data: [] };
-      const submittedSprints = new Set((submissions ?? []).map((s) => s.sprint_id));
+      let submittedSprints = new Set<string>();
+      try {
+        const sprintIds = Array.from(sprintMap.values())
+          .filter((s): s is Sprint => !!s)
+          .map((s) => s.id);
+        const { data: submissions } = sprintIds.length
+          ? await supabase.from('submissions').select('sprint_id').eq('user_id', user.id).in('sprint_id', sprintIds)
+          : { data: [] };
+        submittedSprints = new Set((submissions ?? []).map((s) => s.sprint_id));
+      } catch (e) {
+        console.error('Failed to fetch submissions:', e);
+      }
 
       setPacts(
         userPacts.map((pact) => ({

@@ -62,6 +62,7 @@ export default function LobbyPage() {
   const [notifications, setNotifications] = useState<Notification[]>([]);
 
   useEffect(() => {
+    console.log('[lobby] Loading lobby page...');
     const supabase = createClient();
     const controller = new AbortController();
     const timeout = setTimeout(() => controller.abort(), 5000);
@@ -70,6 +71,7 @@ export default function LobbyPage() {
       try {
         // 1. Get session — if none, return
         const { data: { session } } = await supabase.auth.getSession();
+        console.log('[lobby] Session:', session?.user?.id);
         if (!session?.user) return;
         const userId = session.user.id;
 
@@ -86,9 +88,12 @@ export default function LobbyPage() {
         let memberRows = null;
         try {
           const response = await fetch('/api/user/pacts');
+          console.log('[lobby] API response status:', response.status);
           if (response.ok) {
             memberRows = await response.json();
             console.log('[lobby] Member rows received:', memberRows);
+          } else {
+            console.error('[lobby] API response not ok:', response.status);
           }
         } catch (e) {
           console.error('Failed to fetch pact memberships:', e);
@@ -104,30 +109,43 @@ export default function LobbyPage() {
           const pactIds = pacts.map((p: Pact) => p.id);
 
           // Sprints
-          const sprintResults = await Promise.all(
-            pacts.map((p: Pact) =>
-              supabase.from('sprints').select('*')
-                .eq('pact_id', p.id).eq('sprint_number', p.current_sprint).maybeSingle()
-            )
-          );
-          const sprintMap = new Map<string, Sprint | null>();
-          pacts.forEach((p: Pact, i: number) => sprintMap.set(p.id, sprintResults[i].data ?? null));
+          let sprintMap = new Map<string, Sprint | null>();
+          try {
+            const sprintResults = await Promise.all(
+              pacts.map((p: Pact) =>
+                supabase.from('sprints').select('*')
+                  .eq('pact_id', p.id).eq('sprint_number', p.current_sprint).maybeSingle()
+              )
+            );
+            pacts.forEach((p: Pact, i: number) => sprintMap.set(p.id, sprintResults[i].data ?? null));
+          } catch (e) {
+            console.error('Failed to fetch sprints:', e);
+          }
 
           // Members with profiles
-          const { data: allMembers } = await supabase
-            .from('pact_members').select('*, profiles(*)').in('pact_id', pactIds).eq('status', 'active');
-          const membersByPact = new Map<string, (PactMember & { profiles: Profile })[]>();
-          (allMembers ?? []).forEach((m) => {
-            const typed = m as PactMember & { profiles: Profile };
-            membersByPact.set(typed.pact_id, [...(membersByPact.get(typed.pact_id) ?? []), typed]);
-          });
+          let membersByPact = new Map<string, (PactMember & { profiles: Profile })[]>();
+          try {
+            const { data: allMembers } = await supabase
+              .from('pact_members').select('*, profiles(*)').in('pact_id', pactIds).eq('status', 'active');
+            (allMembers ?? []).forEach((m) => {
+              const typed = m as PactMember & { profiles: Profile };
+              membersByPact.set(typed.pact_id, [...(membersByPact.get(typed.pact_id) ?? []), typed]);
+            });
+          } catch (e) {
+            console.error('Failed to fetch members:', e);
+          }
 
           // Submissions
-          const sprintIds = Array.from(sprintMap.values()).filter((s): s is Sprint => !!s).map((s) => s.id);
-          const { data: submissions } = sprintIds.length
-            ? await supabase.from('submissions').select('sprint_id').eq('user_id', userId).in('sprint_id', sprintIds)
-            : { data: [] };
-          const submittedSprints = new Set((submissions ?? []).map((s) => s.sprint_id));
+          let submittedSprints = new Set<string>();
+          try {
+            const sprintIds = Array.from(sprintMap.values()).filter((s): s is Sprint => !!s).map((s) => s.id);
+            const { data: submissions } = sprintIds.length
+              ? await supabase.from('submissions').select('sprint_id').eq('user_id', userId).in('sprint_id', sprintIds)
+              : { data: [] };
+            submittedSprints = new Set((submissions ?? []).map((s) => s.sprint_id));
+          } catch (e) {
+            console.error('Failed to fetch submissions:', e);
+          }
 
           setActivePacts(pacts.map((pact: Pact) => {
             const sprint = sprintMap.get(pact.id) ?? null;
@@ -135,9 +153,13 @@ export default function LobbyPage() {
           }));
 
           // Total staked
-          const { data: stakeRows } = await supabase
-            .from('stakes').select('amount').eq('user_id', userId).eq('status', 'locked');
-          setTotalStaked((stakeRows ?? []).reduce((s, r) => s + (r.amount ?? 0), 0));
+          try {
+            const { data: stakeRows } = await supabase
+              .from('stakes').select('amount').eq('user_id', userId).eq('status', 'locked');
+            setTotalStaked((stakeRows ?? []).reduce((s, r) => s + (r.amount ?? 0), 0));
+          } catch (e) {
+            console.error('Failed to fetch stakes:', e);
+          }
 
           // Discover (public pacts not in my list)
           let publicPacts = null;
@@ -166,10 +188,14 @@ export default function LobbyPage() {
         }
 
         // Notifications
-        const { data: notifs } = await supabase
-          .from('notifications').select('*').eq('user_id', userId)
-          .eq('is_read', false).order('created_at', { ascending: false }).limit(3);
-        setNotifications(notifs ?? []);
+        try {
+          const { data: notifs } = await supabase
+            .from('notifications').select('*').eq('user_id', userId)
+            .eq('is_read', false).order('created_at', { ascending: false }).limit(3);
+          setNotifications(notifs ?? []);
+        } catch (e) {
+          console.error('Failed to fetch notifications:', e);
+        }
 
       } catch {
         // Timeout or any error — leave all state as empty defaults
