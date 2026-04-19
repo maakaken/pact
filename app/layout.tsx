@@ -38,7 +38,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
       className={`${fraunces.variable} ${plusJakartaSans.variable} ${jetbrainsMono.variable}`}
       style={{ fontFamily: 'var(--font-body)' }}
     >
-      <body className="bg-[#F5F7F0] text-[#1B1F1A] antialiased">
+      <head>
+      </head>
+      <body 
+        className="bg-[#F5F7F0] text-[#1B1F1A] antialiased"
+        suppressHydrationWarning={true}
+      >
         <PrototypeBanner />
         {children}
         <Toaster

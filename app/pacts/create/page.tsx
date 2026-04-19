@@ -236,6 +236,8 @@ export default function CreatePactPage() {
       // ── Step 2: Send invitations if any emails were added ────────────────
       if (inviteEmails.length > 0) {
         try {
+          console.log('[launch] Sending invitations to:', inviteEmails);
+          
           const invRes = await fetch('/api/invitations/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
@@ -246,15 +248,21 @@ export default function CreatePactPage() {
             }),
           });
 
+          console.log('[launch] Invitation response status:', invRes.status);
+
           if (!invRes.ok) {
             const invJson = await invRes.json().catch(() => ({}));
+            console.error('[launch] Invitation failed:', invJson);
             // Pact was created — don't block navigation, just warn
-            toast.warning(`Pact created! But invitations failed: ${invJson.error || invRes.status}`);
+            toast.error(`Invitations failed: ${invJson.error || invRes.status}`);
           } else {
+            const successData = await invRes.json();
+            console.log('[launch] Invitation success:', successData);
             toast.success(`Pact created & ${inviteEmails.length} invitation${inviteEmails.length > 1 ? 's' : ''} sent!`);
           }
-        } catch {
-          toast.warning('Pact created, but could not send invitations.');
+        } catch (err) {
+          console.error('[launch] Invitation request error:', err);
+          toast.error('Failed to send invitations. Please try again.');
         }
       } else {
         toast.success('Pact created!');
