@@ -1,22 +1,51 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { createServerClient } from '@/lib/supabase/server';
+import { createClient } from '@supabase/supabase-js';
+import { cookies } from 'next/headers';
+import { createServerClient } from '@supabase/ssr';
 
 export async function POST(request: NextRequest) {
   try {
     console.log('[invitations/send] Request received');
     
-    const { pact_id, emails, invited_by } = await request.json();
-    console.log('[invitations/send] Parsed data:', { pact_id, emails: emails?.length, invited_by });
+    const { pact_id, emails } = await request.json();
+    console.log('[invitations/send] Parsed data:', { pact_id, emails: emails?.length });
 
-    if (!pact_id || !emails?.length || !invited_by) {
-      console.error('[invitations/send] Missing required fields:', { pact_id: !!pact_id, emails: emails?.length, invited_by: !!invited_by });
-      return NextResponse.json({ error: 'Missing required fields: pact_id, emails, invited_by' }, { status: 400 });
+    if (!pact_id || !emails?.length) {
+      console.error('[invitations/send] Missing required fields:', { pact_id: !!pact_id, emails: emails?.length });
+      return NextResponse.json({ error: 'Missing required fields: pact_id, emails' }, { status: 400 });
     }
 
-    const supabase = createServerClient();
+    // Get user from session using SSR client
+    const cookieStore = await cookies();
+    const supabase = createServerClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.NEXT_PUBLIC_SUPABASE_ANON_KEY!,
+      {
+        cookies: {
+          get(name: string) {
+            return cookieStore.get(name)?.value
+          },
+        },
+      }
+    );
+    
+    const { data: { user }, error: authError } = await supabase.auth.getUser();
+    
+    if (authError || !user) {
+      console.error('[invitations/send] Auth error:', authError);
+      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
+    }
+    
+    console.log('[invitations/send] User authenticated:', user.id);
+
+    // Create service role client for database operations
+    const serviceClient = createClient(
+      process.env.NEXT_PUBLIC_SUPABASE_URL!,
+      process.env.SUPABASE_SERVICE_ROLE_KEY!
+    );
 
     // Get pact details
-    const { data: pact, error: pactError } = await supabase
+    const { data: pact, error: pactError } = await serviceClient
       .from('pacts')
       .select('name')
       .eq('id', pact_id)
@@ -32,13 +61,13 @@ export async function POST(request: NextRequest) {
     // Create invitation records
     const invitations = emails.map((email: string) => ({
       pact_id,
-      invited_by,
+      invited_by: user.id,
       email,
       token: crypto.randomUUID(), // Generate unique token
       expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
     }));
 
-    const { data: created, error } = await supabase
+    const { data: created, error } = await serviceClient
       .from('invitations')
       .insert(invitations)
       .select();

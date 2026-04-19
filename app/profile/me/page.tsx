@@ -44,7 +44,7 @@ export default function MyProfilePage() {
     async function load() {
       try {
         const { data: { session } } = await supabase.auth.getSession();
-        if (!session?.user) { router.replace('/login'); return; }
+        if (!session?.user) return;
         const uid = session.user.id;
         setUserId(uid);
         setUserEmail(session.user.email ?? '');

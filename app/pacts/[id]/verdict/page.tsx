@@ -105,10 +105,7 @@ export default function VerdictPage() {
 
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
-  // Auth guard
-  useEffect(() => {
-    if (!userLoading && !user) router.replace('/login');
-  }, [user, userLoading, router]);
+  // Auth guard removed - server-side auth handles it
 
   const fetchData = useCallback(async () => {
     if (!user || !pact?.currentSprint) return;

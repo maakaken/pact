@@ -1,21 +1,24 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
-import { useParams, useRouter } from 'next/navigation';
-import { useForm } from 'react-hook-form';
+import React, { useEffect, useState, useCallback } from 'react';
+import { useRouter } from 'next/navigation';
 import { createClient } from '@/lib/supabase/client';
 import { useUser } from '@/hooks/useUser';
 import { usePact } from '@/hooks/usePact';
-import Sidebar from '@/components/layout/Sidebar';
-import BottomNav from '@/components/layout/BottomNav';
+import { useForm } from 'react-hook-form';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Button from '@/components/ui/Button';
-import Input from '@/components/ui/Input';
-import Textarea from '@/components/ui/Textarea';
+import Skeleton from '@/components/ui/Skeleton';
+import Sidebar from '@/components/layout/Sidebar';
+import BottomNav from '@/components/layout/BottomNav';
+import Header from '@/components/layout/Header';
 import Avatar from '@/components/ui/Avatar';
 import Modal from '@/components/ui/Modal';
-import Skeleton from '@/components/ui/Skeleton';
+import Input from '@/components/ui/Input';
+import Textarea from '@/components/ui/Textarea';
+import { formatDate } from '@/lib/utils';
+import type { Goal, GoalApproval, Profile } from '@/types';
 import { formatTimeAgo, cn } from '@/lib/utils';
 import type { GoalWithApprovals } from '@/types';
 
@@ -39,12 +42,12 @@ function ModerationBadge({ status }: { status: string }) {
 }
 
 // ── Main Component ─────────────────────────────────────────────────────────────
-export default function VettingPage() {
-  const params = useParams();
-  const pactId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
+export default function VettingPage({ params }: { params: Promise<{ id: string }> }) {
   const router = useRouter();
-  const { user, loading: userLoading } = useUser();
-  const { pact, loading: pactLoading } = usePact(pactId);
+  const resolvedParams = React.use(params);
+  const pactId = resolvedParams.id;
+  const { user, userLoading } = useUser();
+  const { pact, pactLoading } = usePact(pactId);
 
   const [myGoal, setMyGoal] = useState<GoalWithApprovals | null>(null);
   const [teamGoals, setTeamGoals] = useState<GoalWithApprovals[]>([]);
@@ -69,10 +72,7 @@ export default function VettingPage() {
     formState: { errors },
   } = useForm<GoalFormValues>();
 
-  // Auth guard
-  useEffect(() => {
-    if (!userLoading && !user) router.replace('/login');
-  }, [user, userLoading, router]);
+  // Auth guard removed - server-side auth handles it
 
   // Fetch goals
   const fetchGoals = useCallback(async () => {
@@ -87,6 +87,17 @@ export default function VettingPage() {
       .eq('sprint_number', pact.current_sprint);
 
     const goals = (allGoals as GoalWithApprovals[]) ?? [];
+    setTeamGoals(goals.filter((g) => g.user_id !== user.id));
+    setMyGoal(goals.find((g) => g.user_id === user.id) ?? null);
+
+    // Get my votes
+    const { data: votes } = await supabase
+      .from('goal_approvals')
+      .select('*')
+      .eq('pact_id', pactId)
+      .eq('sprint_number', pact.current_sprint)
+      .eq('approver_id', user.id);
+    setMyVotes(Object.fromEntries((votes ?? []).map((v) => [v.goal_id, v.decision])));
 
     const mine = goals.find((g) => g.user_id === user.id) ?? null;
     const team = goals.filter((g) => g.user_id !== user.id);
@@ -135,18 +146,18 @@ export default function VettingPage() {
       .single();
 
     if (goalError || !newGoal) {
-      setSubmitError('Failed to submit goal. Please try again.');
+      setSubmitError(goalError?.message || 'Failed to create goal');
       setSubmitting(false);
       return;
     }
 
-    // Insert into moderation_queue
-    await supabase.from('moderation_queue').insert({
-      type: 'goal_review',
+    // Insert my approval for my own goal
+    await supabase.from('goal_approvals').insert({
       goal_id: newGoal.id,
+      reviewer_id: user.id,
       pact_id: pactId,
-      user_id: user.id,
-      status: 'pending',
+      sprint_number: pact.current_sprint,
+      decision: 'approved',
     });
 
     await fetchGoals();

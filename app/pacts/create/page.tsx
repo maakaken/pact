@@ -136,10 +136,7 @@ export default function CreatePactPage() {
 
   // Auth guard — runs after first render, never blocks initial paint
   useEffect(() => {
-    const supabase = createClient();
-    supabase.auth.getSession().then(({ data: { session } }: { data: { session: Session | null } }) => {
-      if (!session) router.replace('/login');
-    });
+    // Auth guard removed - server-side auth handles it
   }, [router]);
 
   // ── Email helpers ──────────────────────────────────────────────────────────
@@ -174,19 +171,20 @@ export default function CreatePactPage() {
 
   // ── Submit ─────────────────────────────────────────────────────────────────
   const handleLaunch = async () => {
-    if (submitting) return;
+    console.log('[launch] ========== FUNCTION STARTED ==========');
+    if (submitting) {
+      console.log('[launch] Already submitting, returning');
+      return;
+    }
+    console.log('[launch] Setting submitting to true');
     setSubmitting(true);
+    
     try {
-      const supabase = createClient();
-      const { data: { user } } = await supabase.auth.getUser();
-      if (!user) {
-        toast.error('You must be logged in');
-        setSubmitting(false);
-        router.replace('/login');
-        return;
-      }
-
+      console.log('[launch] Skipping client-side auth check, letting server handle it');
+      
       const vals = getValues();
+      console.log('[launch] Form values:', vals);
+      
       const sprintDays =
         vals.sprintType === 'weekly' ? 7
         : vals.sprintType === 'monthly' ? 30
@@ -201,33 +199,65 @@ export default function CreatePactPage() {
         sprint_duration_days: sprintDays,
         stake_amount: parseFloat(vals.stakeAmount) || 500,
         max_members: vals.maxMembers,
-        created_by: user.id,
       };
 
+      console.log('[launch] Prepared payload:', payload);
+
       // ── Step 1: Create the pact ──────────────────────────────────────────
-      const res = await fetch('/api/pacts/create', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify(payload),
-      });
+      console.log('[launch] Calling /api/pacts/create');
+      
+      // Add timeout to prevent indefinite hanging
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 30000); // 30 second timeout
+      
+      let res;
+      try {
+        res = await fetch('/api/pacts/create', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload),
+          signal: controller.signal,
+        });
+      } catch (err) {
+        if (err instanceof Error && err.name === 'AbortError') {
+          console.error('[launch] Request timed out after 30 seconds');
+          toast.error('Request timed out. Please try again.');
+        } else {
+          console.error('[launch] Network error:', err);
+          toast.error('Network error. Please check your connection.');
+        }
+        clearTimeout(timeoutId);
+        setSubmitting(false);
+        return;
+      } finally {
+        clearTimeout(timeoutId);
+      }
+
+      console.log('[launch] Response received, status:', res.status);
 
       let json: { pactId?: string; error?: string };
       try {
         json = await res.json();
-      } catch {
+        console.log('[launch] Response JSON:', json);
+      } catch (err) {
+        console.error('[launch] Failed to parse response JSON:', err);
         toast.error('Server returned an unexpected response. Check Vercel logs.');
         setSubmitting(false);
         return;
       }
 
       if (!res.ok) {
+        console.error('[launch] API returned error:', json.error);
         toast.error(json.error || `Failed to create pact (${res.status})`);
         setSubmitting(false);
         return;
       }
 
       const pactId = json.pactId;
+      console.log('[launch] Pact ID received:', pactId);
+      
       if (!pactId) {
+        console.error('[launch] No pact ID in response');
         toast.error('Pact created but no ID returned — check Supabase env vars in Vercel.');
         setSubmitting(false);
         return;
@@ -244,7 +274,6 @@ export default function CreatePactPage() {
             body: JSON.stringify({
               pact_id: pactId,
               emails: inviteEmails,
-              invited_by: user.id,
             }),
           });
 
@@ -269,12 +298,14 @@ export default function CreatePactPage() {
       }
 
       // ── Step 3: Navigate to the new pact ────────────────────────────────
+      console.log('[launch] Navigating to pact:', pactId);
       router.push(`/pacts/${pactId}`);
 
     } catch (err) {
-      console.error('[launch] Error:', err);
+      console.error('[launch] Unhandled error:', err);
       toast.error(`Something went wrong: ${err instanceof Error ? err.message : String(err)}`);
     } finally {
+      console.log('[launch] Setting submitting to false');
       setSubmitting(false);
     }
   };
@@ -685,7 +716,11 @@ export default function CreatePactPage() {
                 size="lg"
                 className="w-full"
                 loading={submitting}
-                onClick={handleLaunch}
+                onClick={() => {
+                  console.log('[Button] Launch button clicked!');
+                  alert('Launch button clicked! Check console for logs.');
+                  handleLaunch();
+                }}
               >
                 Launch Pact &amp; Send Invitations
               </Button>

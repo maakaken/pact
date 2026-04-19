@@ -69,9 +69,7 @@ export default function AppealPage() {
     setLoading(false);
   }, [user, id]);
 
-  useEffect(() => {
-    if (!authLoading && !user) router.push('/login');
-  }, [authLoading, user, router]);
+  // Auth guard removed - server-side auth handles it
 
   useEffect(() => { load(); }, [load]);
 

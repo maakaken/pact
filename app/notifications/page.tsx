@@ -66,9 +66,7 @@ export default function NotificationsPage() {
   const { user, loading: authLoading } = useUser();
   const { notifications, markRead, markAllRead } = useNotifications(user?.id);
 
-  useEffect(() => {
-    if (!authLoading && !user) router.replace('/login');
-  }, [authLoading, user, router]);
+  // Auth guard removed - server-side auth handles it
 
   const groups = groupByDate(notifications);
 

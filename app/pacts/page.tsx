@@ -36,10 +36,7 @@ export default function PactsPage() {
 
   useEffect(() => {
     const loadPacts = async () => {
-      if (!user) {
-        router.replace('/login');
-        return;
-      }
+      if (!user) return;
 
       const supabase = createClient();
 

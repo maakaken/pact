@@ -82,63 +82,70 @@ export default function PactOverviewPage() {
   const [nudgingUser, setNudgingUser] = useState<string | null>(null);
   const [extraLoading, setExtraLoading] = useState(true);
 
-  // Auth guard
-  useEffect(() => {
-    if (!userLoading && !user) router.replace('/login');
-  }, [user, userLoading, router]);
+  // Auth guard - removed since server-side auth handles it
 
 
   // Fetch extra data (notifications, goal, submissions)
   const fetchExtra = useCallback(async () => {
-    if (!user || !pact) return;
+    if (!pact) return;
+    if (!user) {
+      setExtraLoading(false);
+      return;
+    }
     const supabase = createClient();
     setExtraLoading(true);
 
+    const currentUser = user as any; // Type cast to avoid inference issues
+    const userId = currentUser.id;
+
     // Load nudge state from localStorage
-    const nudgeKey = `nudged_${pactId}_${user.id}`;
+    const nudgeKey = `nudged_${pactId}_${userId}`;
     const stored = localStorage.getItem(nudgeKey);
     if (stored) {
-      try { setNudgedUsers(new Set(JSON.parse(stored))); } catch { /* ignore */ }
+      setNudgedUsers(new Set(JSON.parse(stored)));
     }
 
-    // Recent notifications for this pact
-    const { data: notifData } = await supabase
+    // Fetch notifications
+    const { data: notifs } = await supabase
       .from('notifications')
       .select('*')
-      .eq('user_id', user.id)
+      .eq('user_id', userId)
       .eq('pact_id', pactId)
       .order('created_at', { ascending: false })
-      .limit(20);
-    setNotifications((notifData as Notification[]) ?? []);
+      .limit(10);
+    setNotifications(notifs ?? []);
 
-    // My goal for current sprint
-    const { data: goalData } = await supabase
+    // Fetch my goal
+    const { data: goal } = await supabase
       .from('goals')
       .select('*')
       .eq('pact_id', pactId)
-      .eq('user_id', user.id)
-      .eq('sprint_number', pact.current_sprint)
-      .maybeSingle();
-    setMyGoal(goalData ?? null);
+      .eq('user_id', userId)
+      .single();
+    setMyGoal(goal ?? null);
 
-    // My submission status
-    if (pact.currentSprint) {
-      const { data: subData } = await supabase
-        .from('submissions')
-        .select('id')
-        .eq('sprint_id', pact.currentSprint.id)
-        .eq('user_id', user.id)
-        .maybeSingle();
-      setHasSubmission(!!subData);
-
-      // All member submissions for this sprint
-      const { data: allSubs } = await supabase
+    // Check if I have a submission
+    if (pact.current_sprint) {
+      const { data: submission } = await supabase
         .from('submissions')
         .select('user_id')
-        .eq('sprint_id', pact.currentSprint.id);
-      const submittedSet: Record<string, boolean> = {};
-      (allSubs ?? []).forEach((s: { user_id: string }) => { submittedSet[s.user_id] = true; });
-      setMemberSubmissions(submittedSet);
+        .eq('sprint_id', pact.current_sprint)
+        .eq('user_id', userId)
+        .single();
+      setHasSubmission(!!submission);
+    }
+
+    // Fetch member submissions
+    if (pact.current_sprint) {
+      const { data: submissions } = await supabase
+        .from('submissions')
+        .select('user_id')
+        .eq('sprint_id', pact.current_sprint);
+      const subMap: Record<string, boolean> = {};
+      submissions?.forEach((s: any) => {
+        subMap[s.user_id] = true;
+      });
+      setMemberSubmissions(subMap);
     }
 
     setExtraLoading(false);
@@ -150,7 +157,8 @@ export default function PactOverviewPage() {
 
   // Nudge handler
   const handleNudge = async (targetUserId: string) => {
-    if (!user || !pact || nudgingUser === targetUserId || nudgedUsers.has(targetUserId)) return;
+    const currentUser = user as any;
+    if (!currentUser || !pact || nudgingUser === targetUserId || nudgedUsers.has(targetUserId)) return;
     setNudgingUser(targetUserId);
     try {
       await fetch('/api/nudge', {
@@ -164,7 +172,7 @@ export default function PactOverviewPage() {
       });
       const updated = new Set([...nudgedUsers, targetUserId]);
       setNudgedUsers(updated);
-      const nudgeKey = `nudged_${pactId}_${user.id}`;
+      const nudgeKey = `nudged_${pactId}_${currentUser.id}`;
       localStorage.setItem(nudgeKey, JSON.stringify(Array.from(updated)));
     } catch (err) {
       console.error('Nudge failed:', err);
@@ -185,7 +193,8 @@ export default function PactOverviewPage() {
     );
   }
 
-  const isAdmin = pact ? pact.members.some((m) => m.user_id === user?.id && m.role === 'admin') : false;
+  const currentUser = user as any;
+  const isAdmin = pact && currentUser ? pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin') : false;
   const categoryColor = getCategoryColor(pact?.category ?? null);
   const sprint = pact?.currentSprint ?? null;
   const sprintPct = sprint ? getSprintProgress(sprint.starts_at, sprint.ends_at) : 0;
@@ -243,7 +252,7 @@ export default function PactOverviewPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {(pact?.members ?? []).map((member) => {
               const submitted = memberSubmissions[member.user_id];
-              const isMe = member.user_id === user?.id;
+              const isMe = currentUser && member.user_id === currentUser.id;
               const canNudge = !isMe && pact?.status === 'active' && !submitted;
               const alreadyNudged = nudgedUsers.has(member.user_id);
 
@@ -376,7 +385,7 @@ export default function PactOverviewPage() {
               <div className="space-y-3">
                 {(pact?.members ?? []).map((member) => {
                   const submitted = memberSubmissions[member.user_id];
-                  const isMe = member.user_id === user?.id;
+                  const isMe = currentUser && member.user_id === currentUser.id;
                   return (
                     <Card key={member.id} className="flex items-center gap-4">
                       <Avatar

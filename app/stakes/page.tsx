@@ -27,11 +27,12 @@ export default function StakesPage() {
   const [historyOpen, setHistoryOpen] = useState(false);
 
   const load = useCallback(async () => {
-    if (!user) return;
+    const currentUser = user as any;
+    if (!currentUser) return;
     const supabase = createClient();
     try {
       const { data } = await supabase
-        .from('stakes').select('*, pacts(*), sprints(*)').eq('user_id', user.id)
+        .from('stakes').select('*, pacts(*), sprints(*)').eq('user_id', currentUser.id)
         .order('created_at', { ascending: false });
       setStakes((data as StakeWithDetails[]) ?? []);
     } catch {
@@ -41,9 +42,7 @@ export default function StakesPage() {
     }
   }, [user]);
 
-  useEffect(() => {
-    if (!authLoading && !user) router.push('/login');
-  }, [authLoading, user, router]);
+  // Auth guard removed - server-side auth handles it
 
   useEffect(() => { load(); }, [load]);
 
@@ -88,8 +87,8 @@ export default function StakesPage() {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'At Risk', value: formatCurrency(atRisk), color: '#F4A261', bg: '#FEF3E2' },
-              { label: 'Total Earned', value: formatCurrency(profile?.total_earned ?? 0), color: '#2D6A4F', bg: '#D8EDDA' },
-              { label: 'Total Lost', value: formatCurrency(profile?.total_lost ?? 0), color: '#E07A5F', bg: '#FDF0EC' },
+              { label: 'Total Earned', value: formatCurrency((profile as any)?.total_earned ?? 0), color: '#2D6A4F', bg: '#D8EDDA' },
+              { label: 'Total Lost', value: formatCurrency((profile as any)?.total_lost ?? 0), color: '#E07A5F', bg: '#FDF0EC' },
             ].map(({ label, value, color, bg }) => (
               <div key={label} className="rounded-[20px] p-4 text-center" style={{ backgroundColor: bg }}>
                 <p className="font-[family-name:var(--font-display)] font-bold text-xl" style={{ color }}>{value}</p>

@@ -24,32 +24,35 @@ export function useUser() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    const supabase = createClient();
-    let initialised = false;
-
-    // onAuthStateChange fires immediately with INITIAL_SESSION (or SIGNED_IN if
-    // there is already a session), so we don't need a separate getUser() call.
-    const { data: { subscription } } = supabase.auth.onAuthStateChange(async (_event, session) => {
-      const currentUser = session?.user ?? null;
-      setUser(currentUser);
-
-      if (currentUser) {
-        const p = await fetchProfile(supabase, currentUser.id);
-        setProfile(p);
-      } else {
-        setProfile(null);
+    let mounted = true;
+    
+    async function loadUser() {
+      try {
+        const supabase = createClient();
+        // Use getSession instead of getUser to avoid hanging
+        const { data: { session } } = await supabase.auth.getSession();
+        
+        if (mounted) {
+          if (session?.user) {
+            setUser(session.user);
+            // Fetch profile
+            const profileData = await fetchProfile(supabase, session.user.id);
+            setProfile(profileData);
+          }
+          setLoading(false);
+        }
+      } catch (err) {
+        console.error('Failed to load user:', err);
+        if (mounted) {
+          setLoading(false);
+        }
       }
-
-      // Only update loading on the first event so subsequent sign-in/out
-      // changes don't flash a loading state.
-      if (!initialised) {
-        initialised = true;
-        setLoading(false);
-      }
-    });
-
-    return () => subscription.unsubscribe();
+    }
+    
+    loadUser();
+    
+    return () => { mounted = false; };
   }, []);
 
-  return { user, profile, loading };
+  return { user, profile, userLoading: loading, loading };
 }
