@@ -1,7 +1,9 @@
 {
   "compilerOptions": {
     "lib": ["deno.window"],
-    "strict": true
+    "strict": true,
+    "typeRoots": ["./"],
+    "types": ["./types.d.ts"]
   },
   "importMap": "import_map.json"
 }
