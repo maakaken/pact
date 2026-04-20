@@ -58,19 +58,19 @@ export default function MarketplacePage() {
 
   const loadUserState = useCallback(async () => {
     if (!user) return;
-    const supabase = createClient();
     try {
-      const { data: memberships } = await supabase
-        .from('pact_members')
-        .select('pact_id')
-        .eq('user_id', user.id)
-        .eq('status', 'active');
-      const { data: applications } = await supabase
-        .from('pact_applications')
-        .select('pact_id')
-        .eq('user_id', user.id);
-      setMemberPactIds(new Set(memberships?.map((m) => m.pact_id) ?? []));
-      setAppliedIds(new Set(applications?.map((a) => a.pact_id) ?? []));
+      const res = await fetch('/api/marketplace/user-state');
+      const json = await res.json();
+
+      if (!res.ok) {
+        console.error('[Marketplace] Failed to load user state:', json.error);
+        setMemberPactIds(new Set());
+        setAppliedIds(new Set());
+        return;
+      }
+
+      setMemberPactIds(new Set(json.memberPactIds as string[]));
+      setAppliedIds(new Set(json.appliedIds as string[]));
     } catch (e) {
       console.error('Failed to load user state:', e);
     }
