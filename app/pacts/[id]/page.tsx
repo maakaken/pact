@@ -102,12 +102,14 @@ export default function PactOverviewPage() {
 
     // Fetch applications for admins
     if (isAdmin) {
-      const { data: appsData } = await supabase
-        .from('pact_applications')
-        .select('*, profiles(*)')
-        .eq('pact_id', pactId)
-        .eq('status', 'pending');
-      setApplications(appsData ?? []);
+      const res = await fetch(`/api/pact-applications?pact_id=${pactId}`);
+      const json = await res.json();
+      if (res.ok) {
+        setApplications(json.applications ?? []);
+      } else {
+        console.error('Failed to fetch applications:', json.error);
+        setApplications([]);
+      }
     }
 
     // Load nudge state from localStorage
