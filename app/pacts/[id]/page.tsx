@@ -18,7 +18,7 @@ import { formatTimeAgo, formatCurrency, getCategoryColor, cn } from '@/lib/utils
 import type { Notification, Goal, PactMember, Profile } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-type TabKey = 'members' | 'activity' | 'settings';
+type TabKey = 'members' | 'activity' | 'applications' | 'settings';
 
 function getSprintProgress(startsAt: string, endsAt: string): number {
   const now = Date.now();
@@ -81,6 +81,8 @@ export default function PactOverviewPage() {
   const [nudgedUsers, setNudgedUsers] = useState<Set<string>>(new Set());
   const [nudgingUser, setNudgingUser] = useState<string | null>(null);
   const [extraLoading, setExtraLoading] = useState(true);
+  const [applications, setApplications] = useState<any[]>([]);
+  const [processingApplication, setProcessingApplication] = useState<string | null>(null);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -97,6 +99,16 @@ export default function PactOverviewPage() {
 
     const currentUser = user as any; // Type cast to avoid inference issues
     const userId = currentUser.id;
+
+    // Fetch applications for admins
+    if (isAdmin) {
+      const { data: appsData } = await supabase
+        .from('pact_applications')
+        .select('*, profiles(*)')
+        .eq('pact_id', pactId)
+        .eq('status', 'pending');
+      setApplications(appsData ?? []);
+    }
 
     // Load nudge state from localStorage
     const nudgeKey = `nudged_${pactId}_${userId}`;
@@ -175,8 +187,7 @@ export default function PactOverviewPage() {
 
   // Nudge handler
   const handleNudge = async (targetUserId: string) => {
-    const currentUser = user as any;
-    if (!currentUser || !pact || nudgingUser === targetUserId || nudgedUsers.has(targetUserId)) return;
+    if (!sprint || !pact) return;
     setNudgingUser(targetUserId);
     try {
       await fetch('/api/nudge', {
@@ -188,14 +199,55 @@ export default function PactOverviewPage() {
           sprint_id: pact.currentSprint?.id,
         }),
       });
-      const updated = new Set([...nudgedUsers, targetUserId]);
-      setNudgedUsers(updated);
+      setNudgedUsers((prev) => new Set([...prev, targetUserId]));
+      const currentUser = user as any;
       const nudgeKey = `nudged_${pactId}_${currentUser.id}`;
-      localStorage.setItem(nudgeKey, JSON.stringify(Array.from(updated)));
-    } catch (err) {
-      console.error('Nudge failed:', err);
+      localStorage.setItem(nudgeKey, JSON.stringify([...nudgedUsers, targetUserId]));
+    } catch (e) {
+      console.error('Failed to nudge user:', e);
     } finally {
       setNudgingUser(null);
+    }
+  };
+
+  const handleApproveApplication = async (applicationId: string, applicantUserId: string) => {
+    setProcessingApplication(applicationId);
+    try {
+      const res = await fetch('/api/pact-applications/approve', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_id: applicationId, pact_id: pactId, user_id: applicantUserId }),
+      });
+      if (res.ok) {
+        setApplications((prev) => prev.filter((a) => a.id !== applicationId));
+        fetchExtra();
+      } else {
+        console.error('Failed to approve application');
+      }
+    } catch (e) {
+      console.error('Failed to approve application:', e);
+    } finally {
+      setProcessingApplication(null);
+    }
+  };
+
+  const handleRejectApplication = async (applicationId: string) => {
+    setProcessingApplication(applicationId);
+    try {
+      const res = await fetch('/api/pact-applications/reject', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ application_id: applicationId }),
+      });
+      if (res.ok) {
+        setApplications((prev) => prev.filter((a) => a.id !== applicationId));
+      } else {
+        console.error('Failed to reject application');
+      }
+    } catch (e) {
+      console.error('Failed to reject application:', e);
+    } finally {
+      setProcessingApplication(null);
     }
   };
 
@@ -223,6 +275,7 @@ export default function PactOverviewPage() {
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'members', label: 'Members' },
     { key: 'activity', label: 'Activity' },
+    ...(isAdmin ? [{ key: 'applications' as TabKey, label: 'Applications' }] : []),
     ...(isAdmin ? [{ key: 'settings' as TabKey, label: 'Settings' }] : []),
   ];
 
@@ -492,6 +545,54 @@ export default function PactOverviewPage() {
                       ))}
                     </div>
                   </div>
+                )}
+              </div>
+            )}
+
+            {/* Applications tab (admin only) */}
+            {tab === 'applications' && isAdmin && (
+              <div className="space-y-3">
+                {applications.length === 0 ? (
+                  <Card className="text-center py-10">
+                    <p className="text-[#8FA38F] text-sm">No pending applications.</p>
+                  </Card>
+                ) : (
+                  applications.map((app) => (
+                    <Card key={app.id} className="flex items-center gap-4">
+                      <Avatar
+                        src={app.profiles?.avatar_url}
+                        name={app.profiles?.full_name ?? app.profiles?.username}
+                        size="md"
+                      />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold text-[#1B1F1A]">
+                          {app.profiles?.full_name ?? app.profiles?.username ?? 'Applicant'}
+                        </p>
+                        <p className="text-xs text-[#8FA38F]">
+                          Integrity Score: {app.profiles?.integrity_score ?? '—'} •{' '}
+                          {app.profiles?.sprints_completed ?? 0} sprints completed
+                        </p>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          type="button"
+                          disabled={processingApplication === app.id}
+                          onClick={() => handleApproveApplication(app.id, app.user_id)}
+                          className="px-3 py-1.5 text-xs font-semibold bg-[#D8EDDA] text-[#1B4332] rounded-lg hover:bg-[#B4D9BB] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {processingApplication === app.id ? '...' : 'Approve'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={processingApplication === app.id}
+                          onClick={() => handleRejectApplication(app.id)}
+                          className="px-3 py-1.5 text-xs font-semibold bg-[#FEE2E2] text-[#B91C1C] rounded-lg hover:bg-[#FECACA] disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                        >
+                          {processingApplication === app.id ? '...' : 'Reject'}
+                        </button>
+                      </div>
+                    </Card>
+                  ))
                 )}
               </div>
             )}
