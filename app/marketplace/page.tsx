@@ -82,15 +82,31 @@ export default function MarketplacePage() {
   const handleApply = async (pact: PactWithMembers) => {
     if (!user) { router.push('/login?next=/marketplace'); return; }
     setApplying(pact.id);
-    const supabase = createClient();
-    await supabase.from('pact_applications').insert({
-      pact_id: pact.id,
-      user_id: user.id,
-      status: 'pending',
-    });
-    setAppliedIds((prev) => new Set([...prev, pact.id]));
-    toast.success(`Application sent to "${pact.name}"!`);
-    setApplying(null);
+
+    try {
+      const res = await fetch('/api/marketplace/apply', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ pact_id: pact.id }),
+      });
+
+      const json = await res.json();
+
+      if (!res.ok) {
+        console.error('[Marketplace] API error:', json.error);
+        toast.error(json.error || `Failed to apply to "${pact.name}". Please try again.`);
+        setApplying(null);
+        return;
+      }
+
+      setAppliedIds((prev) => new Set([...prev, pact.id]));
+      toast.success(`Application sent to "${pact.name}"!`);
+    } catch (err) {
+      console.error('[Marketplace] Network error:', err);
+      toast.error(`Failed to apply to "${pact.name}". Please try again.`);
+    } finally {
+      setApplying(null);
+    }
   };
 
   const filtered = pacts.filter((p) => {
