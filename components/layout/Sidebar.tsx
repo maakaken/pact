@@ -6,7 +6,7 @@ import { Home, Store, DollarSign, Bell, User, ChevronDown, LogOut, Shield } from
 import { useState, useEffect } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import { useUser } from '@/hooks/useUser';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 import Avatar from '@/components/ui/Avatar';
 import { cn } from '@/lib/utils';
 
@@ -18,7 +18,7 @@ export default function Sidebar({ activePacts: propActivePacts }: SidebarProps) 
   const pathname = usePathname();
   const router = useRouter();
   const { user, profile } = useUser();
-  const { unreadCount } = useNotifications(user?.id);
+  const { unreadCount } = useNotificationContext();
   const [pactsOpen, setPactsOpen] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
   const [internalActivePacts, setInternalActivePacts] = useState<{ id: string; name: string }[]>([]);

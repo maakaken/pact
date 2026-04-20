@@ -6,7 +6,7 @@ import { Bell, CheckCheck } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { useUser } from '@/hooks/useUser';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 import Card from '@/components/ui/Card';
 import Button from '@/components/ui/Button';
 import Sidebar from '@/components/layout/Sidebar';
@@ -64,7 +64,7 @@ function groupByDate(notifications: Notification[]) {
 export default function NotificationsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useUser();
-  const { notifications, markRead, markAllRead } = useNotifications(user?.id);
+  const { notifications, markRead, markAllRead } = useNotificationContext();
 
   // Auth guard removed - server-side auth handles it
 

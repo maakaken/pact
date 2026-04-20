@@ -2,12 +2,12 @@
 
 import { Bell } from 'lucide-react';
 import Link from 'next/link';
-import { useNotifications } from '@/hooks/useNotifications';
+import { useNotificationContext } from '@/contexts/NotificationContext';
 import { useUser } from '@/hooks/useUser';
 
 export default function NotificationBell() {
   const { user } = useUser();
-  const { unreadCount } = useNotifications(user?.id);
+  const { unreadCount } = useNotificationContext();
 
   return (
     <Link href="/notifications" className="relative p-2 rounded-full hover:bg-[#EEF5EE] transition-colors">

@@ -194,7 +194,7 @@ export default function CreatePactPage() {
         name: vals.name,
         mission: vals.mission || undefined,
         category: vals.category,
-        is_public: vals.visibility === 'public',
+        is_public: vals.openToMarketplace,
         sprint_type: vals.sprintType,
         sprint_duration_days: sprintDays,
         stake_amount: parseFloat(vals.stakeAmount) || 500,

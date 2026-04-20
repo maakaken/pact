@@ -3,6 +3,7 @@ import { Fraunces, Plus_Jakarta_Sans, JetBrains_Mono } from 'next/font/google';
 import './globals.css';
 import { Toaster } from 'sonner';
 import PrototypeBanner from '@/components/layout/PrototypeBanner';
+import NotificationProviderWrapper from '@/components/providers/NotificationProviderWrapper';
 
 const fraunces = Fraunces({
   subsets: ['latin'],
@@ -44,8 +45,10 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="bg-[#F5F7F0] text-[#1B1F1A] antialiased"
         suppressHydrationWarning={true}
       >
-        <PrototypeBanner />
-        {children}
+        <NotificationProviderWrapper>
+          <PrototypeBanner />
+          {children}
+        </NotificationProviderWrapper>
         <Toaster
           position="top-right"
           toastOptions={{

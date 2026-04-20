@@ -37,15 +37,20 @@ export default function MarketplacePage() {
   const [memberPactIds, setMemberPactIds] = useState<Set<string>>(new Set());
 
   const load = useCallback(async () => {
-    const supabase = createClient();
     try {
-      const { data } = await supabase
-        .from('pacts')
-        .select('*, pact_members(*, profiles(*))')
-        .eq('is_public', true)
-        .in('status', ['forming', 'vetting', 'active'])
-        .order('created_at', { ascending: false });
-      setPacts((data as PactWithMembers[]) ?? []);
+      const res = await fetch('/api/marketplace/pacts');
+      const json = await res.json();
+
+      if (!res.ok) {
+        console.error('[Marketplace] API error:', json.error);
+        setPacts([]);
+        return;
+      }
+
+      console.log('[Marketplace] Pacts data:', json.pacts);
+      console.log('[Marketplace] Pacts count:', json.pacts?.length ?? 0);
+
+      setPacts(json.pacts as PactWithMembers[]);
     } catch (e) {
       console.error('Failed to load marketplace pacts:', e);
     }

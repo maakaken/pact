@@ -65,6 +65,7 @@ export async function POST(request: Request) {
     }
 
     console.log('[pacts/create] Inserting pact into database')
+    console.log('[pacts/create] is_public value:', is_public)
     
     // Add timeout to database operation
     const pactPromise = serviceClient
