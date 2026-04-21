@@ -12,6 +12,7 @@ export interface Profile {
   sprints_completed: number;
   sprints_failed: number;
   discord_username: string | null;
+  last_seen_at: string | null;
   created_at: string;
 }
 
@@ -30,6 +31,7 @@ export interface Pact {
   max_members: number;
   category: string | null;
   created_at: string;
+  collusion_flagged: boolean;
 }
 
 export interface Invitation {
@@ -139,8 +141,10 @@ export interface Verdict {
   approve_count: number;
   reject_count: number;
   sympathy_count: number;
+  sympathy_ratio: number;
   stake_returned: boolean;
   dividend_amount: number;
+  amount_returned: number | null;
   finalized_at: string;
 }
 
@@ -152,6 +156,9 @@ export interface Appeal {
   evidence_urls: string[] | null;
   status: 'pending' | 'upheld' | 'overturned';
   moderator_note: string | null;
+  penalty_fee: number | null;
+  collusion_flagged: boolean;
+  collusion_note: string | null;
   created_at: string;
 }
 

@@ -25,7 +25,7 @@ export async function runLiquidationEngine(sprintId: string) {
   const passedVerdicts = verdicts.filter((v) => v.outcome === 'passed');
   const sympathyVerdicts = verdicts.filter((v) => v.outcome === 'sympathy_pass');
 
-  const failurePool = failedVerdicts.reduce((sum, v) => {
+  let failurePool = failedVerdicts.reduce((sum, v) => {
     const stake = stakeMap[v.user_id];
     return sum + (stake?.amount ?? 0);
   }, 0);
@@ -107,19 +107,52 @@ export async function runLiquidationEngine(sprintId: string) {
     }
   }
 
-  // Process sympathy pass members
+  // Process sympathy pass members - proportional stake return
   for (const verdict of sympathyVerdicts) {
     const stake = stakeMap[verdict.user_id];
     if (stake) {
+      // Calculate proportional return based on sympathy_ratio
+      // sympathy_ratio = number of sympathy votes / total eligible voters
+      // If 1 out of 10 voted sympathy, ratio = 0.1, so 10% of stake is returned
+      const sympathyRatio = verdict.sympathy_ratio ?? 0;
+      const returnAmount = stake.amount * sympathyRatio;
+      const forfeitedAmount = stake.amount - returnAmount;
+
+      // Update stake status to partially returned
       await supabase
         .from('stakes')
-        .update({ status: 'returned' })
+        .update({
+          status: 'returned',
+          amount_returned: returnAmount,
+          amount_forfeited: forfeitedAmount,
+        })
         .eq('id', stake.id);
+
+      // Update profile with returned amount
+      const { data: profile } = await supabase
+        .from('profiles')
+        .select('total_earned')
+        .eq('id', verdict.user_id)
+        .single();
+
+      if (profile && returnAmount > 0) {
+        await supabase
+          .from('profiles')
+          .update({
+            total_earned: profile.total_earned + returnAmount,
+          })
+          .eq('id', verdict.user_id);
+      }
+
+      // Add forfeited amount to failure pool for distribution
+      if (forfeitedAmount > 0) {
+        failurePool += forfeitedAmount;
+      }
     }
 
     await supabase
       .from('verdicts')
-      .update({ stake_returned: true })
+      .update({ stake_returned: true, amount_returned: stake?.amount * (verdict.sympathy_ratio ?? 0) })
       .eq('id', verdict.id);
   }
 

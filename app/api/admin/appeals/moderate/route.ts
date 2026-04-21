@@ -74,6 +74,43 @@ export async function POST(request: Request) {
         title: action === 'upheld' ? 'Appeal Reviewed — Verdict Upheld' : 'Appeal Reviewed — Verdict Overturned',
         body: note || `Your appeal was ${action}.`,
       })
+
+      // Charge penalty fee for denied appeals (upheld)
+      if (action === 'upheld') {
+        // Get the appeal and verdict to determine the stake amount
+        const { data: appeal } = await serviceClient
+          .from('appeals')
+          .select('*, verdicts(*, stakes(*))')
+          .eq('id', appealId)
+          .single();
+
+        if (appeal?.verdicts?.stakes) {
+          const stakeAmount = appeal.verdicts.stakes.amount;
+          const penaltyFee = stakeAmount * 0.05; // 5% penalty fee
+
+          // Update appeal record with penalty fee
+          await serviceClient
+            .from('appeals')
+            .update({ penalty_fee: penaltyFee })
+            .eq('id', appealId);
+
+          // Update user profile with additional loss
+          const { data: profile } = await serviceClient
+            .from('profiles')
+            .select('total_lost')
+            .eq('id', userId)
+            .single();
+
+          if (profile) {
+            await serviceClient
+              .from('profiles')
+              .update({
+                total_lost: profile.total_lost + penaltyFee,
+              })
+              .eq('id', userId);
+          }
+        }
+      }
     }
 
     // If overturned, notify all pact members

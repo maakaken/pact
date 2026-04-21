@@ -82,6 +82,7 @@ export default function PactOverviewPage() {
   const [myGoal, setMyGoal] = useState<Goal | null>(null);
   const [hasSubmission, setHasSubmission] = useState(false);
   const [memberSubmissions, setMemberSubmissions] = useState<Record<string, boolean>>({});
+  const [memberGoals, setMemberGoals] = useState<Record<string, Goal>>({});
   const [nudgedUsers, setNudgedUsers] = useState<Set<string>>(new Set());
   const [nudgingUser, setNudgingUser] = useState<string | null>(null);
   const [extraLoading, setExtraLoading] = useState(true);
@@ -190,6 +191,17 @@ export default function PactOverviewPage() {
         const subMap: Record<string, boolean> = {};
         allSubs?.forEach((s) => { subMap[s.user_id] = true; });
         setMemberSubmissions(subMap);
+
+        // Fetch all members' goals for current sprint
+        const { data: allGoals } = await supabase
+          .from('goals')
+          .select('*')
+          .eq('sprint_number', sprintData.sprint_number)
+          .eq('pact_id', pactId);
+
+        const goalMap: Record<string, Goal> = {};
+        allGoals?.forEach((g) => { goalMap[g.user_id] = g; });
+        setMemberGoals(goalMap);
       }
 
       // Fetch pending applications (admin only)
@@ -415,9 +427,25 @@ export default function PactOverviewPage() {
           <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-3">
             {(pact?.members ?? []).map((member) => {
               const submitted = memberSubmissions[member.user_id];
+              const goal = memberGoals[member.user_id];
               const isMe = currentUser && member.user_id === currentUser.id;
               const canNudge = !isMe && pact?.status === 'active' && !submitted;
               const alreadyNudged = nudgedUsers.has(member.user_id);
+
+              // Determine status
+              let statusIcon = '⏳';
+              let statusText = 'In Progress';
+              let statusColor = 'bg-[#FEF3E2] text-[#B5540A]';
+
+              if (submitted) {
+                statusIcon = '✅';
+                statusText = 'Submitted';
+                statusColor = 'bg-[#D8EDDA] text-[#1B4332]';
+              } else if (sprint && new Date(sprint.ends_at) < new Date()) {
+                statusIcon = '❌';
+                statusText = 'Failed';
+                statusColor = 'bg-[#FDF0EC] text-[#C0522A]';
+              }
 
               return (
                 <Card key={member.id} className="flex flex-col items-center text-center py-4 px-3 gap-2 relative">
@@ -434,13 +462,20 @@ export default function PactOverviewPage() {
                     <p className="text-[10px] text-[#8FA38F]">Score: {member.profiles?.integrity_score ?? '—'}</p>
                   </div>
 
+                  {/* Goal */}
+                  {goal && (
+                    <div className="text-center">
+                      <p className="text-[10px] font-medium text-[#1B1F1A] truncate max-w-[90px]">{goal.title}</p>
+                    </div>
+                  )}
+
                   {/* Sprint status badge */}
                   {sprint && sprint.status !== 'completed' && (
                     <span className={cn(
-                      'inline-flex items-center rounded-full px-2 py-0.5 text-[10px] font-semibold',
-                      submitted ? 'bg-[#D8EDDA] text-[#1B4332]' : 'bg-[#FEF3E2] text-[#B5540A]'
+                      'inline-flex items-center gap-1 rounded-full px-2 py-0.5 text-[10px] font-semibold',
+                      statusColor
                     )}>
-                      {submitted ? '✓ Submitted' : 'Pending'}
+                      {statusIcon} {statusText}
                     </span>
                   )}
 

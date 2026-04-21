@@ -230,7 +230,7 @@ export default function AppealPage() {
               <div className="bg-[#FEF3E2] border border-[#F4A261]/30 rounded-[12px] p-4 flex gap-3">
                 <Clock size={16} className="text-[#B5540A] flex-shrink-0 mt-0.5" />
                 <p className="text-xs text-[#B5540A]">
-                  Appeals are reviewed by human moderators within 48 hours. Moderator decisions are final. You will be notified by email and in-app notification when a decision is made.
+                  Appeals are reviewed by human moderators within 48 hours. Moderator decisions are final. False appeals (denied) incur a 5% penalty fee of your stake amount. You will be notified by email and in-app notification when a decision is made.
                 </p>
               </div>
 

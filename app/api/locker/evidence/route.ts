@@ -9,12 +9,26 @@ export async function POST(request: Request) {
     const file = formData.get('file') as File
     const pactId = formData.get('pact_id') as string
     const sprintId = formData.get('sprint_id') as string
+    const externalLinks = formData.get('external_links') as string
 
     if (!file || !pactId || !sprintId) {
       return NextResponse.json(
         { error: 'Missing file, pact_id, or sprint_id' },
         { status: 400 }
       )
+    }
+
+    // Parse external links if provided
+    let parsedExternalLinks: string[] | null = null
+    if (externalLinks) {
+      try {
+        parsedExternalLinks = JSON.parse(externalLinks)
+        if (!Array.isArray(parsedExternalLinks)) {
+          parsedExternalLinks = null
+        }
+      } catch {
+        parsedExternalLinks = null
+      }
     }
 
     // Verify user is authenticated
@@ -104,7 +118,7 @@ export async function POST(request: Request) {
         goal_id: null,
         caption: fileType,
         file_urls: [data.signedUrl],
-        external_links: null,
+        external_links: parsedExternalLinks,
         submitted_at: new Date().toISOString(),
         moderation_status: 'pending',
         moderation_note: null,

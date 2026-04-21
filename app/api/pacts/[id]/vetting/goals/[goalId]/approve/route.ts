@@ -121,18 +121,15 @@ export async function POST(
 
     // Check if all members have approved (only if decision is 'approved')
     if (decision === 'approved') {
-      // Get all goals in the current sprint to find members who submitted goals
-      const { data: allGoals } = await serviceClient
-        .from('goals')
+      // Get ALL pact members (not just goal-submitters)
+      const { data: allMembers } = await serviceClient
+        .from('pact_members')
         .select('user_id')
         .eq('pact_id', pactId)
-        .eq('sprint_number', goal.sprint_number)
-
-      // Only require approvals from members who have submitted goals
-      const memberIds = allGoals?.map((g) => g.user_id) ?? []
+        .eq('status', 'active')
 
       // Exclude goal owner from required voters
-      const requiredVoters = memberIds.filter((id) => id !== goal.user_id)
+      const requiredVoters = (allMembers ?? []).map((m) => m.user_id).filter((id) => id !== goal.user_id)
 
       const { data: votes } = await serviceClient
         .from('goal_votes')
@@ -145,13 +142,13 @@ export async function POST(
       console.log('[Approve Goal API] Vote check:', {
         goalId,
         goalOwnerId: goal.user_id,
-        membersWithGoals: memberIds,
+        allMembers: allMembers?.map((m) => m.user_id),
         requiredVoters,
         voterIds,
         allApproved: requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id)),
       })
 
-      // Check if all other members who submitted goals have approved
+      // Check if all other pact members have approved
       if (requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id))) {
         console.log('[Approve Goal API] Updating goal status to approved')
         // Update goal status to approved

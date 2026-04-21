@@ -193,6 +193,16 @@ export default function VerdictPage() {
   // Members to vote on = all members except self
   const otherMembers = pact?.members.filter((m) => m.user_id !== user?.id) ?? [];
 
+  // Get admin member
+  const adminMember = pact?.members.find((m) => m.role === 'admin');
+  const isAdmin = user?.id === adminMember?.user_id;
+
+  // Check if admin has voted on each member
+  const adminVotesForMember = (targetUserId: string) => {
+    if (!adminMember) return false;
+    return allVotes.some((v) => v.voter_id === adminMember.user_id && v.target_user_id === targetUserId);
+  };
+
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
   const sprint = pact?.currentSprint ?? null;
 
@@ -256,6 +266,9 @@ export default function VerdictPage() {
                 const selectedPending = pendingVotes[member.user_id];
                 const isSubmitting = submittingFor[member.user_id] ?? false;
                 const showVoteUI = !castVote || isEditing;
+
+                // Check if admin has voted on this member
+                const adminHasVoted = adminVotesForMember(member.user_id);
 
                 // Count of voters per member
                 const votersForMember = allVotes.filter((v) => v.target_user_id === member.user_id);
@@ -394,6 +407,15 @@ export default function VerdictPage() {
                       </div>
                     ) : showVoteUI && (
                       <div className="space-y-3">
+                        {/* Admin-first voting warning */}
+                        {!isAdmin && !adminHasVoted && (
+                          <div className="bg-[#FEF3E2] border border-[#F4C678] rounded-[10px] px-3 py-2">
+                            <p className="text-[11px] text-[#B5540A] font-medium">
+                              Admin must vote first. Waiting for {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'admin'} to cast their vote.
+                            </p>
+                          </div>
+                        )}
+
                         {/* Vote buttons */}
                         <div className="flex gap-2">
                           {(['approve', 'reject', 'sympathy'] as VoteDecision[]).map((d) => (
@@ -402,7 +424,7 @@ export default function VerdictPage() {
                               decision={d}
                               selected={selectedPending === d}
                               onSelect={() => handleSelectVote(member.user_id, d)}
-                              disabled={isSubmitting}
+                              disabled={isSubmitting || (!isAdmin && !adminHasVoted)}
                             />
                           ))}
                         </div>
@@ -410,14 +432,14 @@ export default function VerdictPage() {
                         {/* Sympathy tooltip */}
                         {selectedPending === 'sympathy' && (
                           <p className="text-[11px] text-[#B5540A] bg-[#FEF3E2] border border-[#F4C678] rounded-[10px] px-3 py-2">
-                            Their stake is returned only if every member votes Sympathy.
+                            Their stake is partially returned based on sympathy votes. If 1 of 10 members votes sympathy, 10% of their stake is returned.
                           </p>
                         )}
 
                         <Button
                           onClick={() => handleSubmitVote(member.user_id, sub?.id ?? null)}
                           loading={isSubmitting}
-                          disabled={!selectedPending}
+                          disabled={!selectedPending || (!isAdmin && !adminHasVoted)}
                           size="sm"
                           className="w-full"
                         >

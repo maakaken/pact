@@ -1,7 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
-import { CheckCircle2, XCircle } from 'lucide-react';
+import { CheckCircle2, XCircle, Flag } from 'lucide-react';
 import { toast } from 'sonner';
 import { createClient } from '@/lib/supabase/client';
 import Avatar from '@/components/ui/Avatar';
@@ -15,6 +15,7 @@ import type { Appeal, Profile, Verdict } from '@/types';
 interface AppealWithDetails extends Appeal {
   profiles: Profile;
   verdicts: Verdict & { sprints: { pact_id: string; pacts: { name: string } } | null } | null;
+  group_integrity_score: number;
 }
 
 export default function AdminAppealsPage() {
@@ -24,6 +25,9 @@ export default function AdminAppealsPage() {
   const [action, setAction] = useState<'upheld' | 'overturned' | null>(null);
   const [note, setNote] = useState('');
   const [acting, setActing] = useState(false);
+  const [flaggingForCollusion, setFlaggingForCollusion] = useState<AppealWithDetails | null>(null);
+  const [collusionNote, setCollusionNote] = useState('');
+  const [flagging, setFlagging] = useState(false);
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +82,39 @@ export default function AdminAppealsPage() {
     }
   };
 
+  const flagCollusion = async () => {
+    if (!flaggingForCollusion || !collusionNote.trim()) return;
+    setFlagging(true);
+
+    try {
+      const supabase = createClient();
+
+      // Update appeal with collusion flag
+      await supabase
+        .from('appeals')
+        .update({ collusion_flagged: true, collusion_note: collusionNote.trim() })
+        .eq('id', flaggingForCollusion.id);
+
+      // Flag the pact for suspicious collusion
+      const pactId = flaggingForCollusion.verdicts?.sprints?.pact_id;
+      if (pactId) {
+        await supabase
+          .from('pacts')
+          .update({ collusion_flagged: true })
+          .eq('id', pactId);
+      }
+
+      toast.success('Group flagged for suspicious collusion');
+      setFlaggingForCollusion(null);
+      setCollusionNote('');
+      load();
+    } catch (e) {
+      toast.error('Failed to flag for collusion');
+    } finally {
+      setFlagging(false);
+    }
+  };
+
   return (
     <div className="p-8 page-enter">
       <div className="mb-8">
@@ -121,6 +158,29 @@ export default function AdminAppealsPage() {
                 </div>
               )}
 
+              {/* Member history and group integrity */}
+              <div className="bg-[#F5F7F0] border border-[#E0EBE1] rounded-[10px] p-3 mb-4">
+                <p className="text-[10px] font-bold uppercase tracking-wide text-[#8FA38F] mb-2">Member History & Group Integrity</p>
+                <div className="grid grid-cols-2 gap-3 text-xs">
+                  <div>
+                    <p className="text-[#5C6B5E]">Sprints Completed</p>
+                    <p className="font-semibold text-[#1B1F1A]">{appeal.profiles?.sprints_completed ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[#5C6B5E]">Sprints Failed</p>
+                    <p className="font-semibold text-[#E07A5F]">{appeal.profiles?.sprints_failed ?? 0}</p>
+                  </div>
+                  <div>
+                    <p className="text-[#5C6B5E]">Integrity Score</p>
+                    <p className="font-semibold text-[#1B1F1A]">{appeal.profiles?.integrity_score ?? 0}/100</p>
+                  </div>
+                  <div>
+                    <p className="text-[#5C6B5E]">Group Integrity</p>
+                    <p className="font-semibold text-[#1B1F1A]">{Math.round(appeal.group_integrity_score * 10) / 10}/100</p>
+                  </div>
+                </div>
+              </div>
+
               {/* Appeal reason */}
               <div className="mb-4">
                 <p className="text-[10px] font-bold uppercase tracking-wide text-[#8FA38F] mb-1">Appeal Reason</p>
@@ -156,6 +216,12 @@ export default function AdminAppealsPage() {
                 >
                   <XCircle size={14} /> Uphold Verdict
                 </button>
+                <button
+                  onClick={() => { setFlaggingForCollusion(appeal); setCollusionNote(''); }}
+                  className="flex items-center gap-1.5 px-4 py-2 bg-[#FEF3E2] text-[#B5540A] rounded-[10px] text-sm font-semibold hover:bg-[#f9e0d2] transition-all"
+                >
+                  <Flag size={14} /> Flag Collusion
+                </button>
               </div>
             </div>
           ))}
@@ -186,6 +252,34 @@ export default function AdminAppealsPage() {
               Confirm Decision
             </Button>
             <Button onClick={() => { setSelected(null); setAction(null); setNote(''); }} variant="secondary">Cancel</Button>
+          </div>
+        </div>
+      </Modal>
+
+      {/* Collusion flagging modal */}
+      <Modal
+        isOpen={!!flaggingForCollusion}
+        onClose={() => { setFlaggingForCollusion(null); setCollusionNote(''); }}
+        title="Flag for Suspicious Collusion"
+      >
+        <div className="space-y-4">
+          <div className="bg-[#FEF3E2] border border-[#F4A261]/30 rounded-[12px] p-3">
+            <p className="text-sm font-semibold text-[#B5540A]">
+              ⚠️ This will flag the entire group for suspicious collusion. The pact will be marked for review and may face additional scrutiny.
+            </p>
+          </div>
+          <Textarea
+            label="Reason for Flagging *"
+            rows={4}
+            value={collusionNote}
+            onChange={(e) => setCollusionNote(e.target.value)}
+            placeholder="Explain why you suspect collusion. Include any patterns or evidence you've observed."
+          />
+          <div className="flex gap-3">
+            <Button onClick={flagCollusion} loading={flagging} className="flex-1">
+              Confirm Flag
+            </Button>
+            <Button onClick={() => { setFlaggingForCollusion(null); setCollusionNote(''); }} variant="secondary">Cancel</Button>
           </div>
         </div>
       </Modal>

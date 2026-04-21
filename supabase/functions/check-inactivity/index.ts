@@ -60,8 +60,49 @@ Deno.serve(async () => {
 
           if (submission) continue; // Already submitted
 
+          // Get member's last_seen_at for activity tracking
+          const { data: profile } = await supabase
+            .from('profiles')
+            .select('last_seen_at')
+            .eq('id', member.user_id)
+            .single();
+
+          const lastSeen = profile?.last_seen_at ? new Date(profile.last_seen_at) : null;
+          const daysSinceLastSeen = lastSeen ? Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24)) : 999; // Default to 999 if never seen
+
           if (msUntilEnd < 0) {
-            // Sprint ended — auto-fail
+            // Sprint ended — transition to verdict_phase if not already done
+            const { data: currentSprint } = await supabase
+              .from('sprints')
+              .select('status')
+              .eq('id', sprint.id)
+              .single();
+
+            if (currentSprint?.status === 'active') {
+              // Transition to verdict_phase
+              await supabase.from('sprints')
+                .update({ status: 'verdict_phase' })
+                .eq('id', sprint.id);
+
+              // Send verdict_open notifications to all pact members
+              const { data: allMembers } = await supabase
+                .from('pact_members')
+                .select('user_id')
+                .eq('pact_id', sprint.pact_id)
+                .eq('status', 'active');
+
+              for (const member of allMembers ?? []) {
+                await supabase.from('notifications').insert({
+                  user_id: member.user_id,
+                  type: 'verdict_open',
+                  title: 'Verdict Phase Open',
+                  body: 'The sprint has ended. Review submissions and cast your votes.',
+                  pact_id: sprint.pact_id,
+                });
+              }
+            }
+
+            // Auto-fail
             const { data: existingVerdict } = await supabase
               .from('verdicts')
               .select('id')
@@ -97,13 +138,13 @@ Deno.serve(async () => {
                 .eq('user_id', member.user_id);
 
               // Update profile
-              const { data: profile } = await supabase
+              const { data: profileData } = await supabase
                 .from('profiles')
                 .select('sprints_failed, integrity_score, total_lost')
                 .eq('id', member.user_id)
                 .single();
 
-              if (profile) {
+              if (profileData) {
                 const { data: stake } = await supabase
                   .from('stakes')
                   .select('amount')
@@ -112,9 +153,9 @@ Deno.serve(async () => {
                   .single();
 
                 await supabase.from('profiles').update({
-                  sprints_failed: profile.sprints_failed + 1,
-                  integrity_score: Math.max(0, profile.integrity_score - 10),
-                  total_lost: profile.total_lost + (stake?.amount ?? 0),
+                  sprints_failed: profileData.sprints_failed + 1,
+                  integrity_score: Math.max(0, profileData.integrity_score - 10),
+                  total_lost: profileData.total_lost + (stake?.amount ?? 0),
                 }).eq('id', member.user_id);
               }
 
@@ -129,6 +170,24 @@ Deno.serve(async () => {
 
               processed++;
             }
+          } else if (daysSinceLastSeen >= 5 && daysSinceLastSeen < 7) {
+            // 5+ days inactive — warning
+            await supabase.from('notifications').insert({
+              user_id: member.user_id,
+              type: 'inactivity_warning',
+              title: 'Inactivity Warning: 5+ days',
+              body: 'You haven\'t been active in 5+ days. Submit proof before the deadline or your stake will be forfeited.',
+              pact_id: sprint.pact_id,
+            });
+          } else if (daysSinceLastSeen >= 3 && daysSinceLastSeen < 5) {
+            // 3+ days inactive — reminder
+            await supabase.from('notifications').insert({
+              user_id: member.user_id,
+              type: 'inactivity_warning',
+              title: 'Activity Reminder',
+              body: 'It\'s been 3+ days since you last checked in. Don\'t forget to submit your proof.',
+              pact_id: sprint.pact_id,
+            });
           } else if (msUntilEnd < 6 * 3600 * 1000) {
             // < 6 hours — urgent warning
             await supabase.from('notifications').insert({

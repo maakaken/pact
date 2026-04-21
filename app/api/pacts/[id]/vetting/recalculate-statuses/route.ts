@@ -101,10 +101,17 @@ export async function POST(
 
       const voterIds = votes?.map((v) => v.voter_id) ?? []
 
-      // Exclude goal owner from required voters
-      const requiredVoters = memberIds.filter((id) => id !== goal.user_id)
+      // Get ALL pact members (not just goal-submitters)
+      const { data: allMembers } = await serviceClient
+        .from('pact_members')
+        .select('user_id')
+        .eq('pact_id', pactId)
+        .eq('status', 'active')
 
-      // Check if all other members who submitted goals have approved
+      // Exclude goal owner from required voters
+      const requiredVoters = (allMembers ?? []).map((m) => m.user_id).filter((id) => id !== goal.user_id)
+
+      // Check if all other pact members have approved
       const allApproved = requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id))
 
       console.log('[Recalculate Statuses] Goal check:', {

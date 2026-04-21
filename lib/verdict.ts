@@ -70,13 +70,16 @@ export async function calculateVerdicts(sprintId: string) {
     const sympathyCount = memberVotes.filter((v) => v.decision === 'sympathy').length;
 
     let outcome: 'passed' | 'failed' | 'sympathy_pass';
+    let sympathyRatio = 0;
 
-    // Sympathy pass: every eligible voter chose sympathy, no rejects
-    if (
-      sympathyCount === eligibleVoters &&
-      rejectCount === 0 &&
-      eligibleVoters > 0
-    ) {
+    // Calculate sympathy ratio (proportion of voters who chose sympathy)
+    if (eligibleVoters > 0) {
+      sympathyRatio = sympathyCount / eligibleVoters;
+    }
+
+    // Sympathy pass: any sympathy votes result in partial stake return
+    // Outcome is 'sympathy_pass' if there are sympathy votes and the member would otherwise fail
+    if (sympathyCount > 0 && approveCount < eligibleVoters / 2) {
       outcome = 'sympathy_pass';
     } else if (approveCount >= eligibleVoters / 2) {
       outcome = 'passed';
@@ -91,6 +94,7 @@ export async function calculateVerdicts(sprintId: string) {
       approve_count: approveCount,
       reject_count: rejectCount,
       sympathy_count: sympathyCount,
+      sympathy_ratio: sympathyRatio,
       stake_returned: false,
     });
   }

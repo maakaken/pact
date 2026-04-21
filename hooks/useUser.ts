@@ -25,19 +25,23 @@ export function useUser() {
 
   useEffect(() => {
     let mounted = true;
-    
+
     async function loadUser() {
       try {
         const supabase = createClient();
         // Use getSession instead of getUser to avoid hanging
         const { data: { session } } = await supabase.auth.getSession();
-        
+
         if (mounted) {
           if (session?.user) {
             setUser(session.user);
             // Fetch profile
             const profileData = await fetchProfile(supabase, session.user.id);
             setProfile(profileData);
+            // Update last_seen_at for activity tracking
+            await fetch('/api/user/ping', { method: 'POST' }).catch(() => {
+              // Silently fail - activity tracking is non-critical
+            });
           }
           setLoading(false);
         }
@@ -48,9 +52,9 @@ export function useUser() {
         }
       }
     }
-    
+
     loadUser();
-    
+
     // Listen for auth state changes to keep user in sync
     const supabase = createClient();
     const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
@@ -65,7 +69,7 @@ export function useUser() {
         }
       }
     });
-    
+
     return () => {
       mounted = false;
       subscription.unsubscribe();
