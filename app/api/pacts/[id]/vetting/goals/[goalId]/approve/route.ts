@@ -88,10 +88,10 @@ export async function POST(
 
     // Check if user already voted
     const { data: existingVote } = await serviceClient
-      .from('goal_approvals')
+      .from('goal_votes')
       .select('*')
       .eq('goal_id', goalId)
-      .eq('reviewer_id', user.id)
+      .eq('voter_id', user.id)
       .maybeSingle()
 
     if (existingVote) {
@@ -101,18 +101,18 @@ export async function POST(
       )
     }
 
-    // Insert goal approval
+    // Insert goal vote
     const { error: insertError } = await serviceClient
-      .from('goal_approvals')
+      .from('goal_votes')
       .insert({
         goal_id: goalId,
-        reviewer_id: user.id,
+        voter_id: user.id,
         decision,
         comment: comment ?? null,
       })
 
     if (insertError) {
-      console.error('[Approve Goal API] Error inserting approval:', insertError)
+      console.error('[Approve Goal API] Error inserting vote:', insertError)
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }
@@ -131,28 +131,28 @@ export async function POST(
       // Only require approvals from members who have submitted goals
       const memberIds = allGoals?.map((g) => g.user_id) ?? []
 
-      // Exclude goal owner from required approvers
-      const requiredApprovers = memberIds.filter((id) => id !== goal.user_id)
+      // Exclude goal owner from required voters
+      const requiredVoters = memberIds.filter((id) => id !== goal.user_id)
 
-      const { data: approvals } = await serviceClient
-        .from('goal_approvals')
-        .select('reviewer_id')
+      const { data: votes } = await serviceClient
+        .from('goal_votes')
+        .select('voter_id')
         .eq('goal_id', goalId)
         .eq('decision', 'approved')
 
-      const approverIds = approvals?.map((a) => a.reviewer_id) ?? []
+      const voterIds = votes?.map((v) => v.voter_id) ?? []
 
-      console.log('[Approve Goal API] Approval check:', {
+      console.log('[Approve Goal API] Vote check:', {
         goalId,
         goalOwnerId: goal.user_id,
         membersWithGoals: memberIds,
-        requiredApprovers,
-        approverIds,
-        allApproved: requiredApprovers.length > 0 && requiredApprovers.every((id) => approverIds.includes(id)),
+        requiredVoters,
+        voterIds,
+        allApproved: requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id)),
       })
 
       // Check if all other members who submitted goals have approved
-      if (requiredApprovers.length > 0 && requiredApprovers.every((id) => approverIds.includes(id))) {
+      if (requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id))) {
         console.log('[Approve Goal API] Updating goal status to approved')
         // Update goal status to approved
         const { error: updateError } = await serviceClient

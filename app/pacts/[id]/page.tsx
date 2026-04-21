@@ -873,7 +873,6 @@ export default function PactOverviewPage() {
                     <p className="text-sm font-semibold text-[#1B1F1A]">{pact.max_members}</p>
                   </div>
                 </div>
-                <p className="text-xs text-[#8FA38F]">Settings editing coming soon.</p>
               </Card>
             )}
 

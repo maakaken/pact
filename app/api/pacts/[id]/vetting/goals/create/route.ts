@@ -116,10 +116,10 @@ export async function POST(
       )
     }
 
-    // Insert approval for own goal
-    await serviceClient.from('goal_approvals').insert({
+    // Insert vote for own goal
+    await serviceClient.from('goal_votes').insert({
       goal_id: newGoal.id,
-      reviewer_id: user.id,
+      voter_id: user.id,
       pact_id: pactId,
       sprint_number: pact.current_sprint,
       decision: 'approved',

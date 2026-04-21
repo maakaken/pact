@@ -18,9 +18,9 @@ import Modal from '@/components/ui/Modal';
 import Input from '@/components/ui/Input';
 import Textarea from '@/components/ui/Textarea';
 import { formatDate } from '@/lib/utils';
-import type { Goal, GoalApproval, Profile } from '@/types';
+import type { Goal, GoalVote, Profile } from '@/types';
 import { formatTimeAgo, cn } from '@/lib/utils';
-import type { GoalWithApprovals } from '@/types';
+import type { GoalWithVotes } from '@/types';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface GoalFormValues {
@@ -49,8 +49,8 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   const { user, userLoading } = useUser();
   const { pact, pactLoading } = usePact(pactId);
 
-  const [myGoal, setMyGoal] = useState<GoalWithApprovals | null>(null);
-  const [teamGoals, setTeamGoals] = useState<GoalWithApprovals[]>([]);
+  const [myGoal, setMyGoal] = useState<GoalWithVotes | null>(null);
+  const [teamGoals, setTeamGoals] = useState<GoalWithVotes[]>([]);
   const [myVotes, setMyVotes] = useState<Record<string, 'approved' | 'change_requested'>>({});
   const [dataLoading, setDataLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
@@ -91,13 +91,13 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
         return;
       }
 
-      const goals = (json.goals as GoalWithApprovals[]) ?? [];
+      const goals = (json.goals as GoalWithVotes[]) ?? [];
       console.log('[Vetting Page] Goals fetched:', goals.map(g => ({
         id: g.id,
         user_id: g.user_id,
         status: g.status,
         moderation_status: g.moderation_status,
-        approvals: g.goal_approvals?.map(a => ({ reviewer_id: a.reviewer_id, decision: a.decision }))
+        votes: g.goal_votes?.map(v => ({ voter_id: v.voter_id, decision: v.decision }))
       })));
       setTeamGoals(goals.filter((g) => g.user_id !== user.id));
       setMyGoal(goals.find((g) => g.user_id === user.id) ?? null);
@@ -105,11 +105,11 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
       // Get my votes
       const supabase = createClient();
       const { data: votes } = await supabase
-        .from('goal_approvals')
+        .from('goal_votes')
         .select('*')
         .eq('pact_id', pactId)
         .eq('sprint_number', pact.current_sprint)
-        .eq('approver_id', user.id);
+        .eq('voter_id', user.id);
       setMyVotes(Object.fromEntries((votes ?? []).map((v) => [v.goal_id, v.decision])));
 
       const mine = goals.find((g) => g.user_id === user.id) ?? null;
@@ -121,9 +121,9 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
       // Seed my existing votes
       const voteMap: Record<string, 'approved' | 'change_requested'> = {};
       team.forEach((g) => {
-        const myApproval = g.goal_approvals?.find((a) => a.reviewer_id === user.id);
-        if (myApproval) {
-          voteMap[g.id] = myApproval.decision;
+        const myVote = g.goal_votes?.find((v) => v.voter_id === user.id);
+        if (myVote) {
+          voteMap[g.id] = myVote.decision;
         }
       });
       setMyVotes(voteMap);

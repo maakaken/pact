@@ -95,10 +95,10 @@ export async function GET(
       return NextResponse.json({ goals: [] })
     }
 
-    // Fetch goal approvals
+    // Fetch goal votes
     const goalIds = goalsData.map(g => g.id)
-    const { data: approvalsData } = await serviceClient
-      .from('goal_approvals')
+    const { data: votesData } = await serviceClient
+      .from('goal_votes')
       .select('*, profiles(*)')
       .in('goal_id', goalIds)
 
@@ -109,13 +109,13 @@ export async function GET(
       .select('*')
       .in('id', userIds)
 
-    // Group approvals by goal_id
-    const approvalsByGoalId = new Map()
-    ;(approvalsData ?? []).forEach((approval) => {
-      if (!approvalsByGoalId.has(approval.goal_id)) {
-        approvalsByGoalId.set(approval.goal_id, [])
+    // Group votes by goal_id
+    const votesByGoalId = new Map()
+    ;(votesData ?? []).forEach((vote) => {
+      if (!votesByGoalId.has(vote.goal_id)) {
+        votesByGoalId.set(vote.goal_id, [])
       }
-      approvalsByGoalId.get(approval.goal_id).push(approval)
+      votesByGoalId.get(vote.goal_id).push(vote)
     })
 
     // Group profiles by user_id
@@ -127,7 +127,7 @@ export async function GET(
     // Combine data
     const goalsWithDetails = goalsData.map(goal => ({
       ...goal,
-      goal_approvals: approvalsByGoalId.get(goal.id) ?? [],
+      goal_votes: votesByGoalId.get(goal.id) ?? [],
       profiles: profilesByUserId.get(goal.user_id) ?? null,
     }))
 

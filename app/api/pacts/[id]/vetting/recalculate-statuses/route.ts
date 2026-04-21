@@ -92,27 +92,27 @@ export async function POST(
 
     // Recalculate status for each goal
     for (const goal of goals) {
-      // Get approvals for this goal
-      const { data: approvals } = await serviceClient
-        .from('goal_approvals')
-        .select('reviewer_id')
+      // Get votes for this goal
+      const { data: votes } = await serviceClient
+        .from('goal_votes')
+        .select('voter_id')
         .eq('goal_id', goal.id)
         .eq('decision', 'approved')
 
-      const approverIds = approvals?.map((a) => a.reviewer_id) ?? []
+      const voterIds = votes?.map((v) => v.voter_id) ?? []
 
-      // Exclude goal owner from required approvers
-      const requiredApprovers = memberIds.filter((id) => id !== goal.user_id)
+      // Exclude goal owner from required voters
+      const requiredVoters = memberIds.filter((id) => id !== goal.user_id)
 
       // Check if all other members who submitted goals have approved
-      const allApproved = requiredApprovers.length > 0 && requiredApprovers.every((id) => approverIds.includes(id))
+      const allApproved = requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id))
 
       console.log('[Recalculate Statuses] Goal check:', {
         goalId: goal.id,
         goalOwnerId: goal.user_id,
         currentStatus: goal.status,
-        requiredApprovers,
-        approverIds,
+        requiredVoters,
+        voterIds,
         allApproved,
       })
 

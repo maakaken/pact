@@ -90,6 +90,35 @@ export async function POST(request: Request) {
       )
     }
 
+    // Get file type
+    const fileType = file.type.startsWith('image/') ? 'image' :
+                     file.type.startsWith('audio/') ? 'audio' :
+                     file.type.startsWith('video/') ? 'video' : 'file'
+
+    // Create submission record
+    const { error: insertError } = await serviceClient
+      .from('submissions')
+      .insert({
+        sprint_id: sprintId,
+        user_id: user.id,
+        goal_id: null,
+        caption: fileType,
+        file_urls: [data.signedUrl],
+        external_links: null,
+        submitted_at: new Date().toISOString(),
+        moderation_status: 'pending',
+        moderation_note: null,
+        is_auto_failed: false,
+      })
+
+    if (insertError) {
+      console.error('[Locker Evidence Upload API] Error saving submission:', insertError)
+      return NextResponse.json(
+        { error: insertError.message },
+        { status: 500 }
+      )
+    }
+
     return NextResponse.json({
       success: true,
       evidenceUrl: data.signedUrl,

@@ -70,15 +70,17 @@ export interface Goal {
   description: string | null;
   measurable_outcome: string;
   proof_specification: string;
+  // status: peer approval state - tracks whether teammates have approved the goal
   status: 'draft' | 'pending_approval' | 'approved' | 'revision_requested';
+  // moderation_status: admin review state - tracks whether AI/moderation has cleared the goal from policy violations
   moderation_status: 'pending' | 'cleared' | 'flagged';
   created_at: string;
 }
 
-export interface GoalApproval {
+export interface GoalVote {
   id: string;
   goal_id: string;
-  reviewer_id: string;
+  voter_id: string;
   decision: 'approved' | 'change_requested';
   comment: string | null;
   created_at: string;
@@ -186,8 +188,8 @@ export interface PactWithMembers extends Pact {
   pact_members: (PactMember & { profiles: Profile })[];
 }
 
-export interface GoalWithApprovals extends Goal {
-  goal_approvals: (GoalApproval & { profiles: Profile })[];
+export interface GoalWithVotes extends Goal {
+  goal_votes: (GoalVote & { profiles: Profile })[];
   profiles: Profile;
 }
 
