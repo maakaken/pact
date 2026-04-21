@@ -84,25 +84,37 @@ export async function POST(request: Request) {
     let publicUrl = '';
 
     try {
+      console.log('[Proof Upload API] Attempting to upload file:', fileName, 'Size:', file.size, 'Type:', file.type)
       const { data: uploadData, error: uploadError } = await serviceClient.storage
         .from('evidence')
         .upload(fileName, file)
 
       if (uploadError) {
-        console.error('[Proof Upload API] Error uploading file:', uploadError)
+        console.error('[Proof Upload API] Storage upload error:', uploadError)
+        console.error('[Proof Upload API] Error details:', JSON.stringify(uploadError, null, 2))
         return NextResponse.json(
-          { error: uploadError.message },
+          { error: `Storage upload failed: ${uploadError.message}` },
           { status: 500 }
         )
       }
 
-      // Get public URL
-      const { data: { publicUrl: url } } = serviceClient.storage
+      console.log('[Proof Upload API] File uploaded successfully')
+
+      // Get signed URL (valid for 1 hour)
+      const { data, error: signError } = await serviceClient.storage
         .from('evidence')
-        .getPublicUrl(fileName)
-      publicUrl = url
+        .createSignedUrl(fileName, 3600) // 1 hour expiry
+
+      if (signError || !data?.signedUrl) {
+        console.error('[Proof Upload API] Signed URL error:', signError)
+        return NextResponse.json(
+          { error: `Failed to create signed URL: ${signError?.message ?? 'Unknown error'}` },
+          { status: 500 }
+        )
+      }
+      publicUrl = data.signedUrl
     } catch (err) {
-      console.error('[Proof Upload API] Error uploading file:', err)
+      console.error('[Proof Upload API] Upload exception:', err)
       return NextResponse.json(
         { error: err instanceof Error ? err.message : 'Failed to upload file' },
         { status: 500 }

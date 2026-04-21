@@ -92,6 +92,13 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
       }
 
       const goals = (json.goals as GoalWithApprovals[]) ?? [];
+      console.log('[Vetting Page] Goals fetched:', goals.map(g => ({
+        id: g.id,
+        user_id: g.user_id,
+        status: g.status,
+        moderation_status: g.moderation_status,
+        approvals: g.goal_approvals?.map(a => ({ reviewer_id: a.reviewer_id, decision: a.decision }))
+      })));
       setTeamGoals(goals.filter((g) => g.user_id !== user.id));
       setMyGoal(goals.find((g) => g.user_id === user.id) ?? null);
 
@@ -225,12 +232,13 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   const allGoalsSubmitted = teamGoals.length + (myGoal ? 1 : 0) >= allMemberCount;
   const allCleared = teamGoals.every((g) => g.moderation_status === 'cleared') &&
     (!myGoal || myGoal.moderation_status === 'cleared');
-  const allApproved = teamGoals.every((g) => myVotes[g.id] !== undefined);
+  const allApproved = teamGoals.every((g) => g.status === 'approved') &&
+    (!myGoal || myGoal.status === 'approved');
   const vettingComplete = allMemberCount > 0 && allGoalsSubmitted && allCleared && allApproved;
 
   // Auto-transition to active when vetting is complete
   useEffect(() => {
-    if (vettingComplete && !transitioning && pact?.status === 'vetting') {
+    if (vettingComplete && !transitioning && pact?.status === 'vetting' && !transitionError) {
       const transitionToActive = async () => {
         setTransitioning(true);
         setTransitionError('');
@@ -239,9 +247,10 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
             method: 'POST',
           });
           const json = await res.json();
+          console.log('[Transition Response] Status:', res.status, 'Body:', json);
           if (!res.ok) {
             console.error('[Transition Error]', json);
-            setTransitionError(json.error || 'Failed to transition to active phase');
+            setTransitionError(json.error || `Failed to transition to active phase (status ${res.status})`);
           } else {
             // Refresh the pact data to get the new status
             window.location.reload();
@@ -256,7 +265,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
       };
       transitionToActive();
     }
-  }, [vettingComplete, pact?.status, pactId, transitioning]);
+  }, [vettingComplete, pact?.status, pactId, transitioning, transitionError]);
 
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
 

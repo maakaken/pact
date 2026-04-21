@@ -16,14 +16,19 @@ export default function AdminQueuePage() {
   const [filter, setFilter] = useState<string>('all');
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('moderation_queue')
-      .select('*, profiles(username, full_name), pacts(name)')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    setItems((data as QueueItemWithDetails[]) ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/admin/moderation');
+      const json = await res.json();
+      if (res.ok) {
+        setItems((json.queue as QueueItemWithDetails[]) ?? []);
+      } else {
+        console.error('Failed to load moderation queue:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to load moderation queue:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);

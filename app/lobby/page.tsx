@@ -292,7 +292,7 @@ export default function LobbyPage() {
                 {discoverPacts.map((pact) => {
                   const color = getCategoryColor(pact.category);
                   return (
-                    <Link key={pact.id} href={`/marketplace/${pact.id}`}>
+                    <Link key={pact.id} href={`/pacts/${pact.id}`}>
                       <Card hover className="p-0 overflow-hidden h-full">
                         <div className="h-1 rounded-t-[20px]" style={{ backgroundColor: color }} />
                         <div className="p-4">

@@ -92,21 +92,35 @@ export default function MyProfilePage() {
   const saveProfile = async () => {
     if (!userId) return;
     setSaving(true);
-    const supabase = createClient();
 
     let avatarUrl = profile?.avatar_url ?? null;
     if (avatarFiles.length > 0) {
       try {
         const file = avatarFiles[0];
-        const path = `avatars/${userId}/${Date.now()}-${file.name}`;
-        const { data: uploadData } = await supabase.storage.from('avatars').upload(path, file, { upsert: true });
-        if (uploadData) {
-          const { data: { publicUrl } } = supabase.storage.from('avatars').getPublicUrl(path);
-          avatarUrl = publicUrl;
+        const formData = new FormData();
+        formData.append('file', file);
+
+        const res = await fetch('/api/profile/avatar', {
+          method: 'POST',
+          body: formData,
+        });
+        const json = await res.json();
+
+        if (res.ok && json.avatarUrl) {
+          avatarUrl = json.avatarUrl;
+        } else {
+          toast.error(json.error || 'Failed to upload avatar');
+          setSaving(false);
+          return;
         }
-      } catch { /* storage not configured — skip avatar */ }
+      } catch (e) {
+        toast.error('Failed to upload avatar');
+        setSaving(false);
+        return;
+      }
     }
 
+    const supabase = createClient();
     const { data: updated, error } = await supabase
       .from('profiles')
       .upsert({

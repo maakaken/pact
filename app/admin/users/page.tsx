@@ -16,32 +16,61 @@ export default function AdminUsersPage() {
   const [editingScore, setEditingScore] = useState<{ id: string; value: number } | null>(null);
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('profiles')
-      .select('*')
-      .order('created_at', { ascending: false })
-      .limit(100);
-    setUsers(data ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/admin/users');
+      const json = await res.json();
+      if (res.ok) {
+        setUsers(json.profiles ?? []);
+      } else {
+        console.error('Failed to load users:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to load users:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);
 
   const toggleVerified = async (user: Profile) => {
-    const supabase = createClient();
-    await supabase.from('profiles').update({ is_verified: !user.is_verified }).eq('id', user.id);
-    toast.success(user.is_verified ? 'Verification removed' : 'User verified ✓');
-    load();
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId: user.id, isVerified: !user.is_verified }),
+      });
+      if (res.ok) {
+        toast.success(user.is_verified ? 'Verification removed' : 'User verified ✓');
+        load();
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to update user');
+      }
+    } catch (e) {
+      toast.error('Failed to update user');
+    }
   };
 
   const updateScore = async (userId: string, score: number) => {
     const clamped = Math.min(100, Math.max(0, score));
-    const supabase = createClient();
-    await supabase.from('profiles').update({ integrity_score: clamped }).eq('id', userId);
-    toast.success('Integrity score updated');
-    setEditingScore(null);
-    load();
+    try {
+      const res = await fetch('/api/admin/users', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ userId, integrityScore: clamped }),
+      });
+      if (res.ok) {
+        toast.success('Integrity score updated');
+        setEditingScore(null);
+        load();
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to update score');
+      }
+    } catch (e) {
+      toast.error('Failed to update score');
+    }
   };
 
   const filtered = users.filter((u) =>

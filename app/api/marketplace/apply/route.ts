@@ -93,6 +93,48 @@ export async function POST(request: Request) {
       )
     }
 
+    // Fetch pact to get creator
+    const { data: pact } = await serviceClient
+      .from('pacts')
+      .select('created_by')
+      .eq('id', pact_id)
+      .single()
+
+    if (pact?.created_by) {
+      // Fetch applicant's profile for notification
+      const { data: applicantProfile } = await serviceClient
+        .from('profiles')
+        .select('full_name, username')
+        .eq('id', user.id)
+        .single()
+
+      const applicantName = applicantProfile?.full_name || applicantProfile?.username || 'Someone'
+
+      console.log('[Marketplace Apply] Sending notification to pact creator:', {
+        pact_id,
+        pact_creator_id: pact.created_by,
+        applicant_id: user.id,
+        applicant_name: applicantName,
+      })
+
+      // Send notification to pact creator
+      const { error: notifError } = await serviceClient.from('notifications').insert({
+        user_id: pact.created_by,
+        type: 'application_received',
+        title: 'New Application Received',
+        body: `${applicantName} has applied to join your pact`,
+        pact_id,
+      })
+
+      if (notifError) {
+        console.error('[Marketplace Apply] Failed to send notification:', notifError)
+      } else {
+        console.log('[Marketplace Apply] Notification sent successfully')
+      }
+    } else {
+      console.log('[Marketplace Apply] No pact creator found, skipping notification')
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[Marketplace Apply] Unexpected error:', err)

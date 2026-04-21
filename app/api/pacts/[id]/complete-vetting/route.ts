@@ -121,9 +121,18 @@ export async function POST(
       )
     }
 
+    // Log goal statuses for debugging
+    console.log('[Complete Vetting] Goal statuses:', goals.map(g => ({
+      id: g.id,
+      user_id: g.user_id,
+      status: g.status,
+      moderation_status: g.moderation_status
+    })))
+
     // Check all goals are approved (status === 'approved')
     const allApproved = goals.every((g: any) => g.status === 'approved')
     if (!allApproved) {
+      console.log('[Complete Vetting] Not all goals approved. Goal statuses:', goals.map(g => ({ id: g.id, status: g.status })))
       return NextResponse.json(
         { error: 'Not all goals have been approved' },
         { status: 400 }

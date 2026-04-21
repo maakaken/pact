@@ -121,11 +121,18 @@ export async function POST(
 
     // Check if all members have approved (only if decision is 'approved')
     if (decision === 'approved') {
-      const { data: pactMembers } = await serviceClient
-        .from('pact_members')
+      // Get all goals in the current sprint to find members who submitted goals
+      const { data: allGoals } = await serviceClient
+        .from('goals')
         .select('user_id')
         .eq('pact_id', pactId)
-        .eq('status', 'active')
+        .eq('sprint_number', goal.sprint_number)
+
+      // Only require approvals from members who have submitted goals
+      const memberIds = allGoals?.map((g) => g.user_id) ?? []
+
+      // Exclude goal owner from required approvers
+      const requiredApprovers = memberIds.filter((id) => id !== goal.user_id)
 
       const { data: approvals } = await serviceClient
         .from('goal_approvals')
@@ -133,16 +140,31 @@ export async function POST(
         .eq('goal_id', goalId)
         .eq('decision', 'approved')
 
-      const memberIds = pactMembers?.map((m) => m.user_id) ?? []
       const approverIds = approvals?.map((a) => a.reviewer_id) ?? []
 
-      // Check if all active members have approved
-      if (memberIds.length > 0 && memberIds.every((id) => approverIds.includes(id))) {
+      console.log('[Approve Goal API] Approval check:', {
+        goalId,
+        goalOwnerId: goal.user_id,
+        membersWithGoals: memberIds,
+        requiredApprovers,
+        approverIds,
+        allApproved: requiredApprovers.length > 0 && requiredApprovers.every((id) => approverIds.includes(id)),
+      })
+
+      // Check if all other members who submitted goals have approved
+      if (requiredApprovers.length > 0 && requiredApprovers.every((id) => approverIds.includes(id))) {
+        console.log('[Approve Goal API] Updating goal status to approved')
         // Update goal status to approved
-        await serviceClient
+        const { error: updateError } = await serviceClient
           .from('goals')
           .update({ status: 'approved' })
           .eq('id', goalId)
+
+        if (updateError) {
+          console.error('[Approve Goal API] Error updating goal status:', updateError)
+        } else {
+          console.log('[Approve Goal API] Goal status updated successfully')
+        }
       }
     }
 

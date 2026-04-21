@@ -86,19 +86,36 @@ export default function AppealPage() {
     }
     setSubmitting(true);
     setError('');
-    const supabase = createClient();
 
-    // Upload evidence files
+    // Upload evidence files via API
     const evidenceUrls: string[] = [];
     for (const file of files) {
-      const path = `appeals/${pact.id}/${user.id}/${Date.now()}-${file.name}`;
-      const { data: uploadData } = await supabase.storage.from('evidence').upload(path, file);
-      if (uploadData) {
-        const { data: { publicUrl } } = supabase.storage.from('evidence').getPublicUrl(path);
-        evidenceUrls.push(publicUrl);
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('pact_id', pact.id);
+
+        const res = await fetch('/api/appeals/evidence', {
+          method: 'POST',
+          body: formData,
+        });
+        const json = await res.json();
+
+        if (res.ok && json.evidenceUrl) {
+          evidenceUrls.push(json.evidenceUrl);
+        } else {
+          setError(json.error || 'Failed to upload evidence');
+          setSubmitting(false);
+          return;
+        }
+      } catch (e) {
+        setError('Failed to upload evidence');
+        setSubmitting(false);
+        return;
       }
     }
 
+    const supabase = createClient();
     // Create appeal
     const { data: appealData, error: appealError } = await supabase
       .from('appeals')

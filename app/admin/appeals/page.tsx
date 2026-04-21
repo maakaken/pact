@@ -47,52 +47,35 @@ export default function AdminAppealsPage() {
   const decide = async () => {
     if (!selected || !action || !note.trim()) return;
     setActing(true);
-    const supabase = createClient();
 
-    await supabase.from('appeals').update({
-      status: action,
-      moderator_note: note,
-    }).eq('id', selected.id);
+    try {
+      const res = await fetch('/api/admin/appeals/moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          appealId: selected.id,
+          action,
+          note,
+          userId: selected.user_id,
+          pactId: selected.verdicts?.sprints?.pact_id ?? null,
+        }),
+      });
 
-    await supabase.from('moderation_queue').update({ status: 'reviewed' })
-      .eq('type', 'appeal')
-      .eq('appeal_id', selected.id);
-
-    // Notify the appellant
-    await supabase.from('notifications').insert({
-      user_id: selected.user_id,
-      type: 'appeal_result',
-      title: action === 'upheld' ? 'Appeal Reviewed — Verdict Upheld' : 'Appeal Reviewed — Verdict Overturned',
-      body: note,
-      pact_id: selected.verdicts?.sprints?.pact_id ?? null,
-    });
-
-    // If overturned, notify all pact members
-    if (action === 'overturned' && selected.verdicts?.sprints?.pact_id) {
-      const { data: members } = await supabase
-        .from('pact_members')
-        .select('user_id')
-        .eq('pact_id', selected.verdicts.sprints.pact_id);
-
-      if (members) {
-        await supabase.from('notifications').insert(
-          members.map((m) => ({
-            user_id: m.user_id,
-            type: 'appeal_result' as const,
-            title: 'An appeal in your pact was overturned',
-            body: `A moderator has reviewed an appeal and overturned the verdict.`,
-            pact_id: selected.verdicts!.sprints!.pact_id,
-          }))
-        );
+      if (res.ok) {
+        toast.success(action === 'upheld' ? 'Verdict upheld' : 'Verdict overturned');
+        setSelected(null);
+        setAction(null);
+        setNote('');
+        load();
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to moderate appeal');
       }
+    } catch (e) {
+      toast.error('Failed to moderate appeal');
+    } finally {
+      setActing(false);
     }
-
-    toast.success(action === 'upheld' ? 'Verdict upheld' : 'Verdict overturned');
-    setSelected(null);
-    setAction(null);
-    setNote('');
-    load();
-    setActing(false);
   };
 
   return (

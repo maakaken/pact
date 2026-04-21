@@ -171,22 +171,33 @@ export default function LockerPage() {
     setSubmitError('');
     const supabase = createClient();
 
-    // 1. Upload files
+    // 1. Upload files via API
     const fileUrls: string[] = [];
     for (const file of files) {
-      const path = `${pactId}/${pact.currentSprint.id}/${user.id}/${file.name}`;
-      const { error: uploadError } = await supabase.storage
-        .from('evidence')
-        .upload(path, file, { upsert: true });
+      try {
+        const formData = new FormData();
+        formData.append('file', file);
+        formData.append('pact_id', pactId);
+        formData.append('sprint_id', pact.currentSprint.id);
 
-      if (uploadError) {
-        setSubmitError(`Failed to upload ${file.name}: ${uploadError.message}`);
+        const res = await fetch('/api/locker/evidence', {
+          method: 'POST',
+          body: formData,
+        });
+        const json = await res.json();
+
+        if (res.ok && json.evidenceUrl) {
+          fileUrls.push(json.evidenceUrl);
+        } else {
+          setSubmitError(json.error || `Failed to upload ${file.name}`);
+          setSubmitting(false);
+          return;
+        }
+      } catch (e) {
+        setSubmitError(`Failed to upload ${file.name}`);
         setSubmitting(false);
         return;
       }
-
-      const { data: urlData } = supabase.storage.from('evidence').getPublicUrl(path);
-      fileUrls.push(urlData.publicUrl);
     }
 
     // 2. Fetch goal_id

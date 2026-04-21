@@ -63,6 +63,7 @@ function notifIcon(type: Notification['type']): string {
     invite_received: '📬',
     application_approved: '🎉',
     application_rejected: '❌',
+    application_received: '📝',
     proof_upload: '📸',
   };
   return icons[type] ?? '🔔';
@@ -107,13 +108,14 @@ export default function PactOverviewPage() {
 
     const currentUser = user as any;
     const userId = currentUser.id;
-    const isAdmin = pact && currentUser ? pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin') : false;
+    const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
 
     try {
       // Fetch notifications
       const { data: notifData } = await supabase
         .from('notifications')
         .select('*')
+        .eq('user_id', userId)
         .eq('pact_id', pactId)
         .order('created_at', { ascending: false })
         .limit(50);
@@ -192,13 +194,13 @@ export default function PactOverviewPage() {
 
       // Fetch pending applications (admin only)
       if (isAdmin) {
-        const { data: appData } = await supabase
-          .from('pact_applications')
-          .select('*, profiles(*)')
-          .eq('pact_id', pactId)
-          .eq('status', 'pending');
-
-        setApplications(appData ?? []);
+        const res = await fetch(`/api/pact-applications?pact_id=${pactId}`);
+        const json = await res.json();
+        if (res.ok) {
+          setApplications(json.applications ?? []);
+        } else {
+          console.error('Failed to fetch applications:', json.error);
+        }
       }
     } catch (e) {
       console.error('Failed to fetch extra data:', e);
@@ -213,7 +215,7 @@ export default function PactOverviewPage() {
 
   // Nudge handler
   const handleNudge = async (targetUserId: string) => {
-    if (!sprint || !pact) return;
+    if (!sprint || !pact || !user) return;
     setNudgingUser(targetUserId);
     try {
       await fetch('/api/nudge', {
@@ -222,7 +224,7 @@ export default function PactOverviewPage() {
         body: JSON.stringify({
           target_user_id: targetUserId,
           pact_id: pactId,
-          sprint_id: pact.currentSprint?.id,
+          nudger_id: user.id,
         }),
       });
       setNudgedUsers((prev) => new Set([...prev, targetUserId]));
@@ -309,7 +311,7 @@ export default function PactOverviewPage() {
   }
 
   const currentUser = user as any;
-  const isAdmin = pact && currentUser ? pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin') : false;
+  const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
 
   const fetchPendingGoals = useCallback(async () => {
     if (!isAdmin || !pact) return;

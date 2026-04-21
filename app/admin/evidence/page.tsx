@@ -25,6 +25,25 @@ export default function AdminEvidencePage() {
   const [selected, setSelected] = useState<SubWithDetails | null>(null);
   const [note, setNote] = useState('');
   const [acting, setActing] = useState(false);
+  const [signedUrls, setSignedUrls] = useState<Record<string, string>>({});
+
+  const fetchSignedUrl = useCallback(async (url: string): Promise<string> => {
+    try {
+      const res = await fetch('/api/storage/signed-url', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ path: url }),
+      });
+      const json = await res.json();
+      if (res.ok && json.signedUrl) {
+        return json.signedUrl;
+      }
+      return url; // Fallback to original URL if signed URL fails
+    } catch (e) {
+      console.error('Failed to fetch signed URL:', e);
+      return url; // Fallback to original URL
+    }
+  }, []);
 
   const load = useCallback(async () => {
     try {
@@ -32,7 +51,20 @@ export default function AdminEvidencePage() {
       const json = await res.json();
 
       if (res.ok) {
-        setSubmissions(json.submissions ?? []);
+        const subs = json.submissions ?? [];
+        setSubmissions(subs);
+
+        // Fetch signed URLs for all file URLs
+        const urlMap: Record<string, string> = {};
+        for (const sub of subs) {
+          if (sub.file_urls) {
+            for (const url of sub.file_urls) {
+              const signedUrl = await fetchSignedUrl(url);
+              urlMap[url] = signedUrl;
+            }
+          }
+        }
+        setSignedUrls(urlMap);
       } else {
         console.error('Failed to load submissions:', json.error);
       }
@@ -41,40 +73,42 @@ export default function AdminEvidencePage() {
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [fetchSignedUrl]);
 
   useEffect(() => { load(); }, [load]);
 
   const act = async (sub: SubWithDetails, action: 'approved' | 'flagged' | 'rejected', rejectionNote?: string) => {
     setActing(true);
-    const supabase = createClient();
 
-    await supabase.from('submissions').update({
-      moderation_status: action,
-      moderation_note: rejectionNote ?? null,
-    }).eq('id', sub.id);
-
-    await supabase.from('moderation_queue').update({ status: 'reviewed' })
-      .eq('type', 'evidence_review')
-      .eq('submission_id', sub.id);
-
-    if (action === 'rejected' && rejectionNote) {
-      await supabase.from('notifications').insert({
-        user_id: sub.user_id,
-        type: 'verdict_open',
-        title: 'Your evidence was rejected',
-        body: rejectionNote,
+    try {
+      const res = await fetch('/api/admin/evidence/moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          submissionId: sub.id,
+          action,
+          rejectionNote: action === 'rejected' ? rejectionNote : null,
+          userId: sub.user_id,
+        }),
       });
-    }
 
-    toast.success(
-      action === 'approved' ? 'Evidence approved ✓' :
-      action === 'flagged' ? 'Evidence flagged' : 'Evidence rejected'
-    );
-    setSelected(null);
-    setNote('');
-    load();
-    setActing(false);
+      if (res.ok) {
+        toast.success(
+          action === 'approved' ? 'Evidence approved ✓' :
+          action === 'flagged' ? 'Evidence flagged' : 'Evidence rejected'
+        );
+        setSelected(null);
+        setNote('');
+        load();
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to moderate evidence');
+      }
+    } catch (e) {
+      toast.error('Failed to moderate evidence');
+    } finally {
+      setActing(false);
+    }
   };
 
   const isImage = (url: string) =>
@@ -136,10 +170,10 @@ export default function AdminEvidencePage() {
                       <div key={i} className="relative">
                         {isImage(url) ? (
                           <div className="relative aspect-square rounded-[10px] overflow-hidden bg-[#F5F7F0]">
-                            <Image src={url} alt={`File ${i + 1}`} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
+                            <Image src={signedUrls[url] || url} alt={`File ${i + 1}`} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                           </div>
                         ) : (
-                          <a href={url} target="_blank" rel="noopener noreferrer"
+                          <a href={signedUrls[url] || url} target="_blank" rel="noopener noreferrer"
                             className="flex items-center gap-2 p-3 bg-[#F5F7F0] rounded-[10px] text-xs text-[#2D6A4F] hover:bg-[#EEF5EE] transition-colors">
                             <ExternalLink size={12} /> File {i + 1}
                           </a>

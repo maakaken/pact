@@ -49,36 +49,38 @@ export default function AdminGoalsPage() {
       return;
     }
     setActing(true);
-    const supabase = createClient();
 
-    await supabase.from('goals').update({
-      moderation_status: action === 'change_requested' ? 'flagged' : action,
-      status: action === 'change_requested' ? 'revision_requested' : goal.status,
-    }).eq('id', goal.id);
-
-    await supabase.from('moderation_queue').update({ status: 'reviewed' })
-      .eq('type', 'goal_review')
-      .eq('goal_id', goal.id);
-
-    if (action === 'change_requested' && note) {
-      await supabase.from('notifications').insert({
-        user_id: goal.user_id,
-        type: 'goal_approval_needed',
-        title: 'Changes requested for your goal',
-        body: note,
-        pact_id: goal.pact_id,
+    try {
+      const res = await fetch('/api/admin/goals/moderate', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          goalId: goal.id,
+          action,
+          note: action === 'change_requested' ? note : null,
+          goalUserId: goal.user_id,
+          pactId: goal.pact_id,
+        }),
       });
-    }
 
-    toast.success(
-      action === 'cleared' ? 'Goal cleared ✓' :
-      action === 'flagged' ? 'Goal flagged' :
-      'Changes requested'
-    );
-    setSelected(null);
-    setNote('');
-    load();
-    setActing(false);
+      if (res.ok) {
+        toast.success(
+          action === 'cleared' ? 'Goal cleared ✓' :
+          action === 'flagged' ? 'Goal flagged' :
+          'Changes requested'
+        );
+        setSelected(null);
+        setNote('');
+        load();
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to moderate goal');
+      }
+    } catch (e) {
+      toast.error('Failed to moderate goal');
+    } finally {
+      setActing(false);
+    }
   };
 
   return (
