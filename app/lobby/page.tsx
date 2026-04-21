@@ -103,88 +103,22 @@ export default function LobbyPage() {
           .map((m: any) => m.pacts as Pact)
           .filter((p: any): p is Pact => !!p);
 
-        console.log('[lobby] Extracted pacts:', pacts);
+        try {
+          const res = await fetch('/api/lobby');
+          const json = await res.json();
 
-        if (pacts.length > 0) {
-          const pactIds = pacts.map((p: Pact) => p.id);
-
-          // Sprints
-          let sprintMap = new Map<string, Sprint | null>();
-          try {
-            const sprintResults = await Promise.all(
-              pacts.map((p: Pact) =>
-                supabase.from('sprints').select('*')
-                  .eq('pact_id', p.id).eq('sprint_number', p.current_sprint).maybeSingle()
-              )
-            );
-            pacts.forEach((p: Pact, i: number) => sprintMap.set(p.id, sprintResults[i].data ?? null));
-          } catch (e) {
-            console.error('Failed to fetch sprints:', e);
+          if (res.ok) {
+            setFirstName(json.profile?.full_name?.split(' ')[0] ?? json.profile?.username ?? 'there');
+            setIntegrityScore(json.profile?.integrity_score ?? null);
+            setAvatarUrl(json.profile?.avatar_url ?? null);
+            setActivePacts(json.activePacts ?? []);
+            setDiscoverPacts(json.discoverPacts ?? []);
+            setTotalStaked(json.totalStaked ?? 0);
+          } else {
+            console.error('Failed to load lobby data:', json.error);
           }
-
-          // Members with profiles
-          let membersByPact = new Map<string, (PactMember & { profiles: Profile })[]>();
-          try {
-            const { data: allMembers } = await supabase
-              .from('pact_members').select('*, profiles(*)').in('pact_id', pactIds).eq('status', 'active');
-            (allMembers ?? []).forEach((m) => {
-              const typed = m as PactMember & { profiles: Profile };
-              membersByPact.set(typed.pact_id, [...(membersByPact.get(typed.pact_id) ?? []), typed]);
-            });
-          } catch (e) {
-            console.error('Failed to fetch members:', e);
-          }
-
-          // Submissions
-          let submittedSprints = new Set<string>();
-          try {
-            const sprintIds = Array.from(sprintMap.values()).filter((s): s is Sprint => !!s).map((s) => s.id);
-            const { data: submissions } = sprintIds.length
-              ? await supabase.from('submissions').select('sprint_id').eq('user_id', userId).in('sprint_id', sprintIds)
-              : { data: [] };
-            submittedSprints = new Set((submissions ?? []).map((s) => s.sprint_id));
-          } catch (e) {
-            console.error('Failed to fetch submissions:', e);
-          }
-
-          setActivePacts(pacts.map((pact: Pact) => {
-            const sprint = sprintMap.get(pact.id) ?? null;
-            return { pact, sprint, members: membersByPact.get(pact.id) ?? [], hasSubmission: sprint ? submittedSprints.has(sprint.id) : false };
-          }));
-
-          // Total staked
-          try {
-            const { data: stakeRows } = await supabase
-              .from('stakes').select('amount').eq('user_id', userId).eq('status', 'locked');
-            setTotalStaked((stakeRows ?? []).reduce((s, r) => s + (r.amount ?? 0), 0));
-          } catch (e) {
-            console.error('Failed to fetch stakes:', e);
-          }
-
-          // Discover (public pacts not in my list)
-          let publicPacts = null;
-          try {
-            const result = await supabase
-              .from('pacts').select('*').eq('is_public', true)
-              .in('status', ['forming', 'active']).not('id', 'in', `(${pactIds.join(',')})`)
-              .order('created_at', { ascending: false }).limit(3);
-            publicPacts = result.data;
-          } catch (e) {
-            console.error('Failed to fetch discover pacts:', e);
-          }
-          setDiscoverPacts(publicPacts ?? []);
-        } else {
-          // No memberships — just fetch discover pacts
-          let publicPacts = null;
-          try {
-            const result = await supabase
-              .from('pacts').select('*').eq('is_public', true)
-              .in('status', ['forming', 'active']).order('created_at', { ascending: false }).limit(3);
-            publicPacts = result.data;
-          } catch (e) {
-            console.error('Failed to fetch discover pacts:', e);
-          }
-          setDiscoverPacts(publicPacts ?? []);
+        } catch (e) {
+          console.error('Failed to load lobby data:', e);
         }
 
         // Notifications

@@ -35,26 +35,27 @@ export default function ResultsPage() {
 
   const load = useCallback(async () => {
     if (!user || !id) return;
-    const supabase = createClient();
+
     try {
-      const { data: pactData } = await supabase.from('pacts').select('*').eq('id', id).single();
-      if (!pactData) return;
-      setPact(pactData);
+      const res = await fetch(`/api/pacts/${id}/results`);
+      const json = await res.json();
 
-      const { data: sprintData } = await supabase
-        .from('sprints').select('*').eq('pact_id', id).eq('sprint_number', pactData.current_sprint).single();
-      setSprint(sprintData ?? null);
-
-      if (sprintData) {
-        const { data: verdictData } = await supabase.from('verdicts').select('*, profiles(*)').eq('sprint_id', sprintData.id);
-        setVerdicts((verdictData as VerdictRow[]) ?? []);
+      if (!res.ok) {
+        console.error('Failed to load results:', json.error);
+        setLoading(false);
+        return;
       }
 
+      setPact(json.pact);
+      setSprint(json.sprint ?? null);
+      setVerdicts((json.verdicts as VerdictRow[]) ?? []);
+
+      const supabase = createClient();
       const { data: membership } = await supabase
         .from('pact_members').select('*').eq('pact_id', id).eq('user_id', user.id).single();
       setMyMembership(membership ?? null);
-    } catch {
-      // Timeout or error — leave empty state
+    } catch (e) {
+      console.error('Failed to load results:', e);
     } finally {
       setLoading(false);
     }

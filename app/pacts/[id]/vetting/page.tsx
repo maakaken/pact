@@ -77,45 +77,52 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   // Fetch goals
   const fetchGoals = useCallback(async () => {
     if (!user || !pact) return;
-    const supabase = createClient();
     setDataLoading(true);
 
-    const { data: allGoals } = await supabase
-      .from('goals')
-      .select('*, goal_approvals(*, profiles(*)), profiles(*)')
-      .eq('pact_id', pactId)
-      .eq('sprint_number', pact.current_sprint);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/vetting/goals`);
+      const json = await res.json();
 
-    const goals = (allGoals as GoalWithApprovals[]) ?? [];
-    setTeamGoals(goals.filter((g) => g.user_id !== user.id));
-    setMyGoal(goals.find((g) => g.user_id === user.id) ?? null);
-
-    // Get my votes
-    const { data: votes } = await supabase
-      .from('goal_approvals')
-      .select('*')
-      .eq('pact_id', pactId)
-      .eq('sprint_number', pact.current_sprint)
-      .eq('approver_id', user.id);
-    setMyVotes(Object.fromEntries((votes ?? []).map((v) => [v.goal_id, v.decision])));
-
-    const mine = goals.find((g) => g.user_id === user.id) ?? null;
-    const team = goals.filter((g) => g.user_id !== user.id);
-
-    setMyGoal(mine);
-    setTeamGoals(team);
-
-    // Seed my existing votes
-    const voteMap: Record<string, 'approved' | 'change_requested'> = {};
-    team.forEach((g) => {
-      const myApproval = g.goal_approvals?.find((a) => a.reviewer_id === user.id);
-      if (myApproval) {
-        voteMap[g.id] = myApproval.decision;
+      if (!res.ok) {
+        console.error('Failed to fetch goals:', json.error);
+        setDataLoading(false);
+        return;
       }
-    });
-    setMyVotes(voteMap);
 
-    setDataLoading(false);
+      const goals = (json.goals as GoalWithApprovals[]) ?? [];
+      setTeamGoals(goals.filter((g) => g.user_id !== user.id));
+      setMyGoal(goals.find((g) => g.user_id === user.id) ?? null);
+
+      // Get my votes
+      const supabase = createClient();
+      const { data: votes } = await supabase
+        .from('goal_approvals')
+        .select('*')
+        .eq('pact_id', pactId)
+        .eq('sprint_number', pact.current_sprint)
+        .eq('approver_id', user.id);
+      setMyVotes(Object.fromEntries((votes ?? []).map((v) => [v.goal_id, v.decision])));
+
+      const mine = goals.find((g) => g.user_id === user.id) ?? null;
+      const team = goals.filter((g) => g.user_id !== user.id);
+
+      setMyGoal(mine);
+      setTeamGoals(team);
+
+      // Seed my existing votes
+      const voteMap: Record<string, 'approved' | 'change_requested'> = {};
+      team.forEach((g) => {
+        const myApproval = g.goal_approvals?.find((a) => a.reviewer_id === user.id);
+        if (myApproval) {
+          voteMap[g.id] = myApproval.decision;
+        }
+      });
+      setMyVotes(voteMap);
+    } catch (e) {
+      console.error('Failed to fetch goals:', e);
+    } finally {
+      setDataLoading(false);
+    }
   }, [user, pact, pactId]);
 
   useEffect(() => {
@@ -127,41 +134,34 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
     if (!user || !pact) return;
     setSubmitting(true);
     setSubmitError('');
-    const supabase = createClient();
 
-    const { data: newGoal, error: goalError } = await supabase
-      .from('goals')
-      .insert({
-        pact_id: pactId,
-        user_id: user.id,
-        sprint_number: pact.current_sprint,
-        title: vals.title,
-        description: vals.description || null,
-        measurable_outcome: vals.measurableOutcome,
-        proof_specification: vals.proofSpecification,
-        status: 'pending_approval',
-        moderation_status: 'pending',
-      })
-      .select()
-      .single();
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/vetting/goals/create`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          title: vals.title,
+          description: vals.description || null,
+          measurable_outcome: vals.measurableOutcome,
+          proof_specification: vals.proofSpecification,
+        }),
+      });
 
-    if (goalError || !newGoal) {
-      setSubmitError(goalError?.message || 'Failed to create goal');
+      const json = await res.json();
+
+      if (!res.ok) {
+        setSubmitError(json.error || 'Failed to create goal');
+        setSubmitting(false);
+        return;
+      }
+
+      await fetchGoals();
+    } catch (e) {
+      setSubmitError('Failed to create goal');
+      console.error('Failed to create goal:', e);
+    } finally {
       setSubmitting(false);
-      return;
     }
-
-    // Insert my approval for my own goal
-    await supabase.from('goal_approvals').insert({
-      goal_id: newGoal.id,
-      reviewer_id: user.id,
-      pact_id: pactId,
-      sprint_number: pact.current_sprint,
-      decision: 'approved',
-    });
-
-    await fetchGoals();
-    setSubmitting(false);
   };
 
   // ── Approve goal ───────────────────────────────────────────────────────────

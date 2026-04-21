@@ -28,18 +28,15 @@ export function NotificationProvider({ children, userId }: NotificationProviderP
 
   const fetchNotifications = useCallback(async () => {
     if (!userId || !isMounted) return;
-    const supabase = createClient();
     try {
-      const { data } = await supabase
-        .from('notifications')
-        .select('*')
-        .eq('user_id', userId)
-        .order('created_at', { ascending: false })
-        .limit(50);
+      const res = await fetch('/api/notifications');
+      const json = await res.json();
 
-      if (data && isMounted) {
-        setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.is_read).length);
+      if (res.ok && isMounted) {
+        setNotifications(json.notifications ?? []);
+        setUnreadCount((json.notifications ?? []).filter((n: Notification) => !n.is_read).length);
+      } else {
+        console.error('Failed to fetch notifications:', json.error);
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);

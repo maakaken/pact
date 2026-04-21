@@ -49,26 +49,25 @@ export default function MyProfilePage() {
         setUserId(uid);
         setUserEmail(session.user.email ?? '');
 
-        const { data: profileData } = await supabase.from('profiles').select('*').eq('id', uid).single();
-        if (profileData) {
-          setProfile(profileData);
-          setEditData({
-            full_name: profileData.full_name ?? '',
-            bio: profileData.bio ?? '',
-            interests: profileData.interests ?? [],
-            username: profileData.username ?? '',
-          });
-        } else {
-          // New user with no profile yet — pre-fill from email
-          setEditData((d) => ({ ...d, username: session.user.email?.split('@')[0] ?? '' }));
-          setEditing(true); // open edit form immediately so they can complete profile
-        }
+        // Fetch profile and pacts via API
+        const res = await fetch('/api/profile/me');
+        const json = await res.json();
 
-        const { data: memberships } = await supabase.from('pact_members').select('pact_id').eq('user_id', uid);
-        if (memberships?.length) {
-          const pactIds = memberships.map((m) => m.pact_id);
-          const { data: pactData } = await supabase.from('pacts').select('*, pact_members(*)').in('id', pactIds);
-          setPacts((pactData as PactHistory[]) ?? []);
+        if (res.ok) {
+          if (json.profile) {
+            setProfile(json.profile);
+            setEditData({
+              full_name: json.profile.full_name ?? '',
+              bio: json.profile.bio ?? '',
+              interests: json.profile.interests ?? [],
+              username: json.profile.username ?? '',
+            });
+          } else {
+            // New user with no profile yet — pre-fill from email
+            setEditData((d) => ({ ...d, username: session.user.email?.split('@')[0] ?? '' }));
+            setEditing(true); // open edit form immediately so they can complete profile
+          }
+          setPacts((json.pacts as PactHistory[]) ?? []);
         }
       } catch {
         // Timeout or network error — leave defaults

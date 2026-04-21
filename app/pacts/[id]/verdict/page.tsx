@@ -109,33 +109,36 @@ export default function VerdictPage() {
 
   const fetchData = useCallback(async () => {
     if (!user || !pact?.currentSprint) return;
-    const supabase = createClient();
     setDataLoading(true);
 
-    const { data: subs } = await supabase
-      .from('submissions')
-      .select('*, profiles(*), goals(*)')
-      .eq('sprint_id', pact.currentSprint.id);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/verdict/submissions`);
+      const json = await res.json();
 
-    const { data: votes } = await supabase
-      .from('votes')
-      .select('*')
-      .eq('sprint_id', pact.currentSprint.id);
-
-    const allVoteList = (votes as Vote[]) ?? [];
-    setSubmissions((subs as SubmissionWithProfile[]) ?? []);
-    setAllVotes(allVoteList);
-
-    // Seed existing votes cast by me
-    const voteMap: Record<string, VoteDecision> = {};
-    allVoteList.forEach((v) => {
-      if (v.voter_id === user.id) {
-        voteMap[v.target_user_id] = v.decision;
+      if (!res.ok) {
+        console.error('Failed to fetch submissions:', json.error);
+        setDataLoading(false);
+        return;
       }
-    });
-    setMyVotes(voteMap);
-    setDataLoading(false);
-  }, [user, pact]);
+
+      const allVoteList = (json.votes as Vote[]) ?? [];
+      setSubmissions((json.submissions as SubmissionWithProfile[]) ?? []);
+      setAllVotes(allVoteList);
+
+      // Seed existing votes cast by me
+      const voteMap: Record<string, VoteDecision> = {};
+      allVoteList.forEach((v) => {
+        if (v.voter_id === user.id) {
+          voteMap[v.target_user_id] = v.decision;
+        }
+      });
+      setMyVotes(voteMap);
+    } catch (e) {
+      console.error('Failed to fetch submissions:', e);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [user, pact, pactId]);
 
   useEffect(() => {
     fetchData();

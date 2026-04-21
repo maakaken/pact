@@ -32,41 +32,46 @@ export default function AppealPage() {
 
   const load = useCallback(async () => {
     if (!user || !id) return;
-    const supabase = createClient();
 
-    const { data: pactData } = await supabase.from('pacts').select('*').eq('id', id).single();
-    if (!pactData) { setAccessDenied(true); setLoading(false); return; }
-    setPact(pactData);
+    try {
+      const res = await fetch(`/api/pacts/${id}/appeal/data`);
+      const json = await res.json();
 
-    const { data: sprintData } = await supabase
-      .from('sprints')
-      .select('*')
-      .eq('pact_id', id)
-      .eq('sprint_number', pactData.current_sprint)
-      .single();
-    setSprint(sprintData ?? null);
-
-    if (sprintData) {
-      const { data: verdictData } = await supabase
-        .from('verdicts')
-        .select('*')
-        .eq('sprint_id', sprintData.id)
-        .eq('user_id', user.id)
-        .single();
-
-      if (!verdictData || verdictData.outcome !== 'failed') {
+      if (!res.ok) {
+        console.error('Failed to load appeal data:', json.error);
         setAccessDenied(true);
         setLoading(false);
         return;
       }
 
-      const within24h = Date.now() - new Date(verdictData.finalized_at).getTime() < 24 * 3600 * 1000;
-      if (!within24h) { setAccessDenied(true); setLoading(false); return; }
+      if (!json.pact) {
+        setAccessDenied(true);
+        setLoading(false);
+        return;
+      }
 
-      setMyVerdict(verdictData);
+      setPact(json.pact);
+      setSprint(json.sprint ?? null);
+
+      if (json.sprint && json.verdict) {
+        if (json.verdict.outcome !== 'failed') {
+          setAccessDenied(true);
+          setLoading(false);
+          return;
+        }
+
+        const within24h = Date.now() - new Date(json.verdict.finalized_at).getTime() < 24 * 3600 * 1000;
+        if (!within24h) { setAccessDenied(true); setLoading(false); return; }
+
+        setMyVerdict(json.verdict);
+      } else {
+        setAccessDenied(true);
+      }
+    } catch (e) {
+      console.error('Failed to load appeal data:', e);
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   }, [user, id]);
 
   // Auth guard removed - server-side auth handles it

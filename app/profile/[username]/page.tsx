@@ -27,25 +27,25 @@ export default function PublicProfilePage() {
   const [notFound, setNotFound] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data: profileData } = await supabase
-      .from('profiles')
-      .select('*')
-      .eq('username', username)
-      .single();
-    if (!profileData) { setNotFound(true); setLoading(false); return; }
-    setProfile(profileData);
+    try {
+      const res = await fetch(`/api/profile/${username}`);
+      const json = await res.json();
 
-    const { data: memberships } = await supabase
-      .from('pact_members')
-      .select('pact_id')
-      .eq('user_id', profileData.id);
-    if (memberships?.length) {
-      const pactIds = memberships.map((m) => m.pact_id);
-      const { data: pactData } = await supabase.from('pacts').select('*, pact_members(*)').in('id', pactIds).eq('is_public', true);
-      setPacts((pactData as PactHistory[]) ?? []);
+      if (!res.ok) {
+        if (res.status === 404) {
+          setNotFound(true);
+        }
+        setLoading(false);
+        return;
+      }
+
+      setProfile(json.profile);
+      setPacts((json.pacts as PactHistory[]) ?? []);
+    } catch (e) {
+      console.error('Failed to load profile:', e);
+    } finally {
+      setLoading(false);
     }
-    setLoading(false);
   }, [username]);
 
   useEffect(() => { load(); }, [load]);

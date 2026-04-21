@@ -29,12 +29,14 @@ export default function StakesPage() {
   const load = useCallback(async () => {
     const currentUser = user as any;
     if (!currentUser) return;
-    const supabase = createClient();
     try {
-      const { data } = await supabase
-        .from('stakes').select('*, pacts(*), sprints(*)').eq('user_id', currentUser.id)
-        .order('created_at', { ascending: false });
-      setStakes((data as StakeWithDetails[]) ?? []);
+      const res = await fetch('/api/stakes');
+      const json = await res.json();
+      if (res.ok) {
+        setStakes((json.stakes as StakeWithDetails[]) ?? []);
+      } else {
+        console.error('Failed to load stakes:', json.error);
+      }
     } catch (e) {
       console.error('Failed to load stakes:', e);
     } finally {

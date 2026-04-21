@@ -11,6 +11,7 @@ import BottomNav from '@/components/layout/BottomNav';
 import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Avatar from '@/components/ui/Avatar';
+import Button from '@/components/ui/Button';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import ProgressBar from '@/components/ui/ProgressBar';
 import Skeleton from '@/components/ui/Skeleton';
@@ -83,6 +84,7 @@ export default function PactOverviewPage() {
   const [extraLoading, setExtraLoading] = useState(true);
   const [applications, setApplications] = useState<any[]>([]);
   const [processingApplication, setProcessingApplication] = useState<string | null>(null);
+  const [startingSprint, setStartingSprint] = useState(false);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -250,6 +252,25 @@ export default function PactOverviewPage() {
       console.error('Failed to reject application:', e);
     } finally {
       setProcessingApplication(null);
+    }
+  };
+
+  const handleStartSprint = async () => {
+    setStartingSprint(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/start-sprint`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        router.push(`/pacts/${pactId}/vetting`);
+      } else {
+        const json = await res.json();
+        console.error('Failed to start sprint:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to start sprint:', e);
+    } finally {
+      setStartingSprint(false);
     }
   };
 
@@ -429,6 +450,17 @@ export default function PactOverviewPage() {
                   ⏳ {pact?.members.length ?? 0} / {pact?.max_members ?? '?'} members joined
                 </span>
               </div>
+              {isAdmin && (
+                <Button
+                  onClick={handleStartSprint}
+                  loading={startingSprint}
+                  variant="secondary"
+                  size="sm"
+                  className="mx-auto"
+                >
+                  Force Start Sprint
+                </Button>
+              )}
             </Card>
           )}
 

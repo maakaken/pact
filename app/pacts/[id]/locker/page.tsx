@@ -119,20 +119,28 @@ export default function LockerPage() {
 
   const fetchData = useCallback(async () => {
     if (!user || !pact?.currentSprint) return;
-    const supabase = createClient();
     setDataLoading(true);
 
-    const { data: subs } = await supabase
-      .from('submissions')
-      .select('*, profiles(*), goals(*)')
-      .eq('sprint_id', pact.currentSprint.id);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/verdict/submissions`);
+      const json = await res.json();
 
-    const submissions = (subs as SubmissionWithProfile[]) ?? [];
-    setAllSubmissions(submissions);
-    const mine = submissions.find((s) => s.user_id === user.id) ?? null;
-    setMySubmission(mine);
-    setDataLoading(false);
-  }, [user, pact]);
+      if (!res.ok) {
+        console.error('Failed to fetch submissions:', json.error);
+        setDataLoading(false);
+        return;
+      }
+
+      const submissions = (json.submissions as SubmissionWithProfile[]) ?? [];
+      setAllSubmissions(submissions);
+      const mine = submissions.find((s) => s.user_id === user.id) ?? null;
+      setMySubmission(mine);
+    } catch (e) {
+      console.error('Failed to fetch submissions:', e);
+    } finally {
+      setDataLoading(false);
+    }
+  }, [user, pact, pactId]);
 
   useEffect(() => {
     fetchData();
