@@ -2,26 +2,19 @@
 
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
-import { Home, Target, Lock, Vote, User, Store, Bell } from 'lucide-react';
+import { Home, Shield, DollarSign, User, Store, Bell } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { useNotificationContext } from '@/contexts/NotificationContext';
 
-interface BottomNavProps {
-  vettingBadge?: number;
-  lockerBadge?: number;
-  verdictBadge?: number;
-}
-
-export default function BottomNav({ vettingBadge = 0, lockerBadge = 0, verdictBadge = 0 }: BottomNavProps) {
+export default function BottomNav() {
   const pathname = usePathname();
   const { unreadCount } = useNotificationContext();
 
   const tabs = [
     { href: '/lobby', icon: Home, label: 'Lobby' },
+    { href: '/pacts', icon: Shield, label: 'My Pacts' },
     { href: '/marketplace', icon: Store, label: 'Marketplace' },
-    { href: '/pacts', icon: Target, label: 'Vetting', badge: vettingBadge, sub: 'vetting' },
-    { href: '/pacts', icon: Lock, label: 'Locker', badge: lockerBadge, sub: 'locker' },
-    { href: '/pacts', icon: Vote, label: 'Verdict', badge: verdictBadge, sub: 'verdict' },
+    { href: '/stakes', icon: DollarSign, label: 'My Stakes' },
     { href: '/notifications', icon: Bell, label: 'Notifications', badge: unreadCount },
     { href: '/profile/me', icon: User, label: 'Profile' },
   ];
