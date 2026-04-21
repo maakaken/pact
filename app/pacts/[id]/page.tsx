@@ -639,7 +639,8 @@ export default function PactOverviewPage() {
             {tab === 'activity' && (
               <div>
                 {/* Proof submission */}
-                <Card className="mb-6 space-y-4">
+                {pact?.status === 'active' && (
+                  <Card className="mb-6 space-y-4">
                   <h3 className="text-sm font-bold text-[#1B1F1A]" style={{ fontFamily: 'var(--font-display)' }}>
                     Share Your Proof
                   </h3>
@@ -701,6 +702,7 @@ export default function PactOverviewPage() {
                     )}
                   </div>
                 </Card>
+                )}
 
                 {notifications.length === 0 && !extraLoading ? (
                   <Card className="text-center py-10">

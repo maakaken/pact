@@ -176,6 +176,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   // ── Approve goal ───────────────────────────────────────────────────────────
   const handleApprove = async (goalId: string) => {
     if (!user || myVotes[goalId] || votingGoal === goalId) return;
+    console.log('[handleApprove] Starting approval for goal:', goalId);
     setVotingGoal(goalId);
 
     try {
@@ -185,16 +186,21 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
         body: JSON.stringify({ decision: 'approved', comment: null }),
       });
 
+      const json = await res.json();
+      console.log('[handleApprove] API response:', { status: res.status, body: json });
+
       if (res.ok) {
         setMyVotes((prev) => ({ ...prev, [goalId]: 'approved' }));
         // Refetch goal data to update status
         await fetchGoals();
+        console.log('[handleApprove] Approval successful, data refetched');
       } else {
-        const json = await res.json();
         console.error('Failed to approve goal:', json.error);
+        alert(`Failed to approve goal: ${json.error || 'Unknown error'}`);
       }
     } catch (e) {
       console.error('Failed to approve goal:', e);
+      alert('Failed to approve goal. Please try again.');
     } finally {
       setVotingGoal(null);
     }

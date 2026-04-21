@@ -102,6 +102,7 @@ export async function POST(
     }
 
     // Insert goal vote
+    console.log('[Approve Goal API] Inserting vote:', { goalId, voterId: user.id, decision, comment })
     const { error: insertError } = await serviceClient
       .from('goal_votes')
       .insert({
@@ -118,6 +119,7 @@ export async function POST(
         { status: 500 }
       )
     }
+    console.log('[Approve Goal API] Vote inserted successfully')
 
     // Check if all members have approved (only if decision is 'approved')
     if (decision === 'approved') {
