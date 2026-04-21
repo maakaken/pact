@@ -119,6 +119,33 @@ export async function POST(
       )
     }
 
+    // Check if all members have approved (only if decision is 'approved')
+    if (decision === 'approved') {
+      const { data: pactMembers } = await serviceClient
+        .from('pact_members')
+        .select('user_id')
+        .eq('pact_id', pactId)
+        .eq('status', 'active')
+
+      const { data: approvals } = await serviceClient
+        .from('goal_approvals')
+        .select('reviewer_id')
+        .eq('goal_id', goalId)
+        .eq('decision', 'approved')
+
+      const memberIds = pactMembers?.map((m) => m.user_id) ?? []
+      const approverIds = approvals?.map((a) => a.reviewer_id) ?? []
+
+      // Check if all active members have approved
+      if (memberIds.length > 0 && memberIds.every((id) => approverIds.includes(id))) {
+        // Update goal status to approved
+        await serviceClient
+          .from('goals')
+          .update({ status: 'approved' })
+          .eq('id', goalId)
+      }
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[Approve Goal API] Unexpected error:', err)

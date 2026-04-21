@@ -304,7 +304,7 @@ export default function VerdictPage() {
                                     rel="noopener noreferrer"
                                     className="aspect-square rounded-[10px] overflow-hidden relative block"
                                   >
-                                    <Image src={url} alt={`Evidence ${i + 1}`} fill className="object-cover" />
+                                    <Image src={url} alt={`Evidence ${i + 1}`} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                                   </a>
                                 ) : (
                                   <a

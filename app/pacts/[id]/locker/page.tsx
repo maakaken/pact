@@ -52,7 +52,7 @@ function MediaCell({
       <div className="w-full aspect-square rounded-[12px] overflow-hidden bg-[#F5F7F0] relative flex items-center justify-center">
         {submission ? (
           isImage ? (
-            <Image src={firstFile!} alt={memberName} fill className="object-cover" />
+            <Image src={firstFile!} alt={memberName} fill className="object-cover" sizes="(max-width: 640px) 100vw, (max-width: 1024px) 50vw, 33vw" />
           ) : isVideo ? (
             <div className="flex flex-col items-center gap-1 text-[#5C6B5E]">
               <Film size={28} />
@@ -374,7 +374,7 @@ export default function LockerPage() {
                           >
                             {isImg ? (
                               <div className="w-8 h-8 rounded-[6px] overflow-hidden relative flex-shrink-0">
-                                <Image src={url} alt={name} fill className="object-cover" />
+                                <Image src={url} alt={name} fill className="object-cover" sizes="32px" />
                               </div>
                             ) : (
                               <FileText size={16} className="text-[#5C6B5E] flex-shrink-0" />

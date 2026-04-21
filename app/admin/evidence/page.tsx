@@ -136,7 +136,7 @@ export default function AdminEvidencePage() {
                       <div key={i} className="relative">
                         {isImage(url) ? (
                           <div className="relative aspect-square rounded-[10px] overflow-hidden bg-[#F5F7F0]">
-                            <Image src={url} alt={`File ${i + 1}`} fill className="object-cover" />
+                            <Image src={url} alt={`File ${i + 1}`} fill className="object-cover" sizes="(max-width: 768px) 100vw, (max-width: 1200px) 50vw, 33vw" />
                           </div>
                         ) : (
                           <a href={url} target="_blank" rel="noopener noreferrer"

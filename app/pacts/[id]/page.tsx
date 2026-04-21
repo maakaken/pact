@@ -39,7 +39,7 @@ function ctaForPact(
   hasSubmission: boolean
 ): { label: string; href: string } | null {
   if (pactStatus === 'vetting') {
-    return { label: hasGoal ? 'Review Goals' : 'Set Your Goal', href: `/pacts/${pactId}/vetting` };
+    return { label: hasGoal ? 'Check Goals' : 'Set Your Goal', href: `/pacts/${pactId}/vetting` };
   }
   if (pactStatus === 'active' && !hasSubmission) {
     return { label: 'Submit Proof', href: `/pacts/${pactId}/locker` };

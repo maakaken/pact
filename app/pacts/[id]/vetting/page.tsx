@@ -55,6 +55,8 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   const [dataLoading, setDataLoading] = useState(true);
   const [submitting, setSubmitting] = useState(false);
   const [submitError, setSubmitError] = useState('');
+  const [transitioning, setTransitioning] = useState(false);
+  const [transitionError, setTransitionError] = useState('');
 
   // Request changes modal
   const [changeModal, setChangeModal] = useState<{ open: boolean; goalId: string; goalTitle: string }>({
@@ -178,6 +180,8 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
 
       if (res.ok) {
         setMyVotes((prev) => ({ ...prev, [goalId]: 'approved' }));
+        // Refetch goal data to update status
+        await fetchGoals();
       } else {
         const json = await res.json();
         console.error('Failed to approve goal:', json.error);
@@ -224,6 +228,36 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   const allApproved = teamGoals.every((g) => myVotes[g.id] !== undefined);
   const vettingComplete = allMemberCount > 0 && allGoalsSubmitted && allCleared && allApproved;
 
+  // Auto-transition to active when vetting is complete
+  useEffect(() => {
+    if (vettingComplete && !transitioning && pact?.status === 'vetting') {
+      const transitionToActive = async () => {
+        setTransitioning(true);
+        setTransitionError('');
+        try {
+          const res = await fetch(`/api/pacts/${pactId}/complete-vetting`, {
+            method: 'POST',
+          });
+          const json = await res.json();
+          if (!res.ok) {
+            console.error('[Transition Error]', json);
+            setTransitionError(json.error || 'Failed to transition to active phase');
+          } else {
+            // Refresh the pact data to get the new status
+            window.location.reload();
+          }
+        } catch (e) {
+          console.error('[Transition Exception]', e);
+          setTransitionError('Failed to transition to active phase');
+          console.error('Failed to transition:', e);
+        } finally {
+          setTransitioning(false);
+        }
+      };
+      transitionToActive();
+    }
+  }, [vettingComplete, pact?.status, pactId, transitioning]);
+
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
 
   return (
@@ -241,7 +275,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
               className="text-2xl md:text-3xl font-bold text-[#1B1F1A] mb-2"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              {myGoal ? 'Your Goal' : 'Set Your Goal'}
+              {pact?.status === 'active' ? 'Check Goals' : myGoal ? 'Your Goal' : 'Set Your Goal'}
             </h1>
             <p className="text-[#5C6B5E] text-sm leading-relaxed">
               {myGoal
@@ -254,10 +288,19 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
           {/* ── VETTING COMPLETE BANNER ──────────────────────────────────────── */}
           {vettingComplete && (
             <div className="bg-[#D8EDDA] border border-[#74C69D] rounded-[16px] p-4 flex items-center gap-3">
-              <span className="text-2xl">🎉</span>
-              <div>
-                <p className="text-sm font-bold text-[#1B4332]">Vetting Complete!</p>
-                <p className="text-xs text-[#2D6A4F] mt-0.5">All goals have been cleared and approved. The sprint can now begin.</p>
+              <span className="text-2xl">{transitioning ? '⏳' : '🎉'}</span>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-[#1B4332]">
+                  {transitioning ? 'Starting Sprint...' : 'Vetting Complete!'}
+                </p>
+                <p className="text-xs text-[#2D6A4F] mt-0.5">
+                  {transitioning
+                    ? 'Transitioning to active phase...'
+                    : 'All goals have been cleared and approved. The sprint is starting.'}
+                </p>
+                {transitionError && (
+                  <p className="text-xs text-[#E07A5F] mt-1">{transitionError}</p>
+                )}
               </div>
             </div>
           )}
@@ -294,8 +337,12 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
                       )}
                     </div>
                     <div className="flex flex-col gap-1.5 items-end">
-                      <Badge variant="pending">Awaiting Moderation</Badge>
-                      <Badge variant="pending">Awaiting Peer Approval</Badge>
+                      {myGoal.moderation_status === 'pending' && (
+                        <Badge variant="pending">Awaiting Moderation</Badge>
+                      )}
+                      {myGoal.status === 'pending_approval' && (
+                        <Badge variant="pending">Awaiting Peer Approval</Badge>
+                      )}
                     </div>
                   </div>
 
