@@ -26,14 +26,20 @@ export default function AdminAppealsPage() {
   const [acting, setActing] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('appeals')
-      .select('*, profiles(*), verdicts(*, sprints(pact_id, pacts(name)))')
-      .eq('status', 'pending')
-      .order('created_at', { ascending: true });
-    setAppeals((data as AppealWithDetails[]) ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/admin/appeals');
+      const json = await res.json();
+
+      if (res.ok) {
+        setAppeals(json.appeals ?? []);
+      } else {
+        console.error('Failed to load appeals:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to load appeals:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);

@@ -27,15 +27,20 @@ export default function AdminEvidencePage() {
   const [acting, setActing] = useState(false);
 
   const load = useCallback(async () => {
-    const supabase = createClient();
-    const { data } = await supabase
-      .from('submissions')
-      .select('*, profiles(*), goals(*), sprints(pacts(*))')
-      .eq('moderation_status', 'pending')
-      .eq('is_auto_failed', false)
-      .order('submitted_at', { ascending: true });
-    setSubmissions((data as SubWithDetails[]) ?? []);
-    setLoading(false);
+    try {
+      const res = await fetch('/api/admin/evidence');
+      const json = await res.json();
+
+      if (res.ok) {
+        setSubmissions(json.submissions ?? []);
+      } else {
+        console.error('Failed to load submissions:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to load submissions:', e);
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => { load(); }, [load]);

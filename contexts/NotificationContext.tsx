@@ -95,13 +95,19 @@ export function NotificationProvider({ children, userId }: NotificationProviderP
   }, [userId, isMounted]);
 
   const markRead = async (id: string) => {
-    const supabase = createClient();
+    if (!userId) return;
     try {
-      await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
-      setUnreadCount((prev) => Math.max(0, prev - 1));
+      const res = await fetch(`/api/notifications/${id}/read`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setNotifications((prev) =>
+          prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
+        );
+        setUnreadCount((prev) => Math.max(0, prev - 1));
+      } else {
+        console.error('Failed to mark notification as read');
+      }
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
     }
@@ -109,15 +115,16 @@ export function NotificationProvider({ children, userId }: NotificationProviderP
 
   const markAllRead = async () => {
     if (!userId) return;
-    const supabase = createClient();
     try {
-      await supabase
-        .from('notifications')
-        .update({ is_read: true })
-        .eq('user_id', userId)
-        .eq('is_read', false);
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
-      setUnreadCount(0);
+      const res = await fetch('/api/notifications/mark-all-read', {
+        method: 'POST',
+      });
+      if (res.ok) {
+        setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+        setUnreadCount(0);
+      } else {
+        console.error('Failed to mark all notifications as read');
+      }
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);
     }
