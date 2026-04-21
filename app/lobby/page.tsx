@@ -43,7 +43,7 @@ function notifIcon(type: Notification['type']): string {
     goal_approval_needed: '✅', sprint_starting: '🚀', proof_due: '📎',
     verdict_open: '⚖️', verdict_result: '🏆', appeal_result: '📋',
     nudge: '👋', inactivity_warning: '⚠️', invite_received: '📬',
-    application_approved: '🎉', application_rejected: '❌',
+    application_approved: '🎉', application_rejected: '❌', proof_upload: '📸',
   };
   return icons[type] ?? '🔔';
 }

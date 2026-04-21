@@ -26,6 +26,7 @@ const notifIcon: Record<Notification['type'], string> = {
   invite_received: '✉️',
   application_approved: '✅',
   application_rejected: '❌',
+  proof_upload: '📸',
 };
 
 const notifColor: Record<Notification['type'], string> = {
@@ -36,6 +37,7 @@ const notifColor: Record<Notification['type'], string> = {
   verdict_result: '#2D6A4F',
   appeal_result: '#5C6B5E',
   nudge: '#2D6A4F',
+  proof_upload: '#2D6A4F',
   inactivity_warning: '#E07A5F',
   invite_received: '#2D6A4F',
   application_approved: '#2D6A4F',
