@@ -158,9 +158,11 @@ export interface Notification {
   user_id: string;
   type: 'goal_approval_needed' | 'sprint_starting' | 'proof_due' | 'verdict_open' |
         'verdict_result' | 'appeal_result' | 'nudge' | 'inactivity_warning' |
-        'invite_received' | 'application_approved' | 'application_rejected';
+        'invite_received' | 'application_approved' | 'application_rejected' |
+        'proof_upload';
   title: string;
   body: string | null;
+  data: string | null;
   pact_id: string | null;
   is_read: boolean;
   created_at: string;

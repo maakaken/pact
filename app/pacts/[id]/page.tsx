@@ -12,6 +12,7 @@ import Card from '@/components/ui/Card';
 import Badge from '@/components/ui/Badge';
 import Avatar from '@/components/ui/Avatar';
 import Button from '@/components/ui/Button';
+import Modal from '@/components/ui/Modal';
 import CountdownTimer from '@/components/ui/CountdownTimer';
 import ProgressBar from '@/components/ui/ProgressBar';
 import Skeleton from '@/components/ui/Skeleton';
@@ -19,7 +20,7 @@ import { formatTimeAgo, formatCurrency, getCategoryColor, cn } from '@/lib/utils
 import type { Notification, Goal, PactMember, Profile } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-type TabKey = 'members' | 'activity' | 'applications' | 'settings';
+type TabKey = 'members' | 'activity' | 'applications' | 'settings' | 'moderation';
 
 function getSprintProgress(startsAt: string, endsAt: string): number {
   const now = Date.now();
@@ -62,6 +63,7 @@ function notifIcon(type: Notification['type']): string {
     invite_received: '📬',
     application_approved: '🎉',
     application_rejected: '❌',
+    proof_upload: '📸',
   };
   return icons[type] ?? '🔔';
 }
@@ -85,9 +87,13 @@ export default function PactOverviewPage() {
   const [applications, setApplications] = useState<any[]>([]);
   const [processingApplication, setProcessingApplication] = useState<string | null>(null);
   const [startingSprint, setStartingSprint] = useState(false);
+  const [pendingGoals, setPendingGoals] = useState<any[]>([]);
+  const [moderationLoading, setModerationLoading] = useState(false);
+  const [uploadingProof, setUploadingProof] = useState(false);
+  const [uploadError, setUploadError] = useState('');
+  const [proofModal, setProofModal] = useState<{ open: boolean; url: string; type: string }>({ open: false, url: '', type: '' });
 
   // Auth guard - removed since server-side auth handles it
-
 
   // Fetch extra data (notifications, goal, submissions)
   const fetchExtra = useCallback(async () => {
@@ -99,91 +105,107 @@ export default function PactOverviewPage() {
     const supabase = createClient();
     setExtraLoading(true);
 
-    const currentUser = user as any; // Type cast to avoid inference issues
+    const currentUser = user as any;
     const userId = currentUser.id;
+    const isAdmin = pact && currentUser ? pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin') : false;
 
-    // Fetch applications for admins
-    if (isAdmin) {
-      const res = await fetch(`/api/pact-applications?pact_id=${pactId}`);
-      const json = await res.json();
-      if (res.ok) {
-        setApplications(json.applications ?? []);
-      } else {
-        console.error('Failed to fetch applications:', json.error);
-        setApplications([]);
-      }
-    }
-
-    // Load nudge state from localStorage
-    const nudgeKey = `nudged_${pactId}_${userId}`;
-    const stored = localStorage.getItem(nudgeKey);
-    if (stored) {
-      setNudgedUsers(new Set(JSON.parse(stored)));
-    }
-
-    // Fetch notifications
     try {
-      const { data: notifs } = await supabase
+      // Fetch notifications
+      const { data: notifData } = await supabase
         .from('notifications')
         .select('*')
-        .eq('user_id', userId)
         .eq('pact_id', pactId)
         .order('created_at', { ascending: false })
-        .limit(10);
-      setNotifications(notifs ?? []);
-    } catch (e) {
-      console.error('Failed to fetch notifications:', e);
-    }
+        .limit(50);
 
-    // Fetch my goal
-    try {
-      const { data: goal } = await supabase
-        .from('goals')
+      // Fetch proof submissions via API endpoint
+      const proofRes = await fetch(`/api/pacts/${pactId}/proof-submissions`);
+      const proofJson = await proofRes.json();
+      console.log('[fetchExtra] Proof submissions response:', proofJson);
+
+      const proofSubmissions = proofJson.submissions ?? [];
+      const filteredProofSubmissions = proofSubmissions;
+
+      // Convert proof submissions to notification-like objects for display
+      const proofNotifs = filteredProofSubmissions.map((sub: any) => ({
+        id: sub.id,
+        user_id: sub.user_id,
+        type: 'proof_upload',
+        title: sub.user_id === user.id ? 'You uploaded a proof' : `${sub.profiles?.full_name || sub.profiles?.username || 'Someone'} uploaded a proof`,
+        body: 'Tap to view',
+        data: JSON.stringify({
+          proof_url: sub.file_urls?.[0],
+          proof_type: sub.caption || 'file', // Use caption field to get file type
+          uploaded_by: sub.user_id,
+        }),
+        pact_id: pactId,
+        is_read: true,
+        created_at: sub.submitted_at,
+      }));
+
+      // Merge notifications and proof submissions
+      const allActivity = [...(notifData ?? []), ...proofNotifs]
+        .sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
+
+      setNotifications(allActivity);
+
+      // Fetch current sprint
+      const { data: sprintData } = await supabase
+        .from('sprints')
         .select('*')
         .eq('pact_id', pactId)
-        .eq('sprint_number', pact?.current_sprint ?? 0)
-        .eq('user_id', userId)
+        .eq('status', 'active')
         .maybeSingle();
-      setMyGoal(goal ?? null);
-    } catch (e) {
-      console.error('Failed to fetch goal:', e);
-    }
 
-    // Check if I have a submission
-    const sprint = pact?.currentSprint ?? null;
-    if (sprint) {
-      try {
-        const { data: submission } = await supabase
-          .from('submissions')
+      if (sprintData) {
+        // Check if user has a goal for current sprint
+        const { data: goalData } = await supabase
+          .from('goals')
           .select('*')
-          .eq('sprint_id', sprint.id)
-          .eq('user_id', userId)
+          .eq('sprint_number', sprintData.sprint_number)
+          .eq('pact_id', pactId)
+          .eq('user_id', user.id)
           .maybeSingle();
-        setHasSubmission(!!submission);
-      } catch (e) {
-        console.error('Failed to fetch submission:', e);
-      }
-    }
 
-    // Fetch member submissions
-    if (pact.current_sprint) {
-      try {
-        const { data: submissions } = await supabase
+        setMyGoal(goalData ?? null);
+
+        // Check if user has submitted for current sprint
+        const { data: subData } = await supabase
+          .from('submissions')
+          .select('id')
+          .eq('sprint_id', sprintData.id)
+          .eq('user_id', user.id)
+          .maybeSingle();
+
+        setHasSubmission(!!subData);
+
+        // Check which members have submitted
+        const { data: allSubs } = await supabase
           .from('submissions')
           .select('user_id')
-          .eq('sprint_id', pact.current_sprint);
-        const subMap: Record<string, boolean> = {};
-        submissions?.forEach((s: any) => {
-          subMap[s.user_id] = true;
-        });
-        setMemberSubmissions(subMap);
-      } catch (e) {
-        console.error('Failed to fetch member submissions:', e);
-      }
-    }
+          .eq('sprint_id', sprintData.id);
 
-    setExtraLoading(false);
-  }, [user, pact, pactId]);
+        const subMap: Record<string, boolean> = {};
+        allSubs?.forEach((s) => { subMap[s.user_id] = true; });
+        setMemberSubmissions(subMap);
+      }
+
+      // Fetch pending applications (admin only)
+      if (isAdmin) {
+        const { data: appData } = await supabase
+          .from('pact_applications')
+          .select('*, profiles(*)')
+          .eq('pact_id', pactId)
+          .eq('status', 'pending');
+
+        setApplications(appData ?? []);
+      }
+    } catch (e) {
+      console.error('Failed to fetch extra data:', e);
+    } finally {
+      setExtraLoading(false);
+    }
+  }, [pact, pactId, user]);
 
   useEffect(() => {
     fetchExtra();
@@ -288,6 +310,50 @@ export default function PactOverviewPage() {
 
   const currentUser = user as any;
   const isAdmin = pact && currentUser ? pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin') : false;
+
+  const fetchPendingGoals = useCallback(async () => {
+    if (!isAdmin || !pact) return;
+    setModerationLoading(true);
+    try {
+      const res = await fetch('/api/admin/goals');
+      const json = await res.json();
+
+      if (res.ok) {
+        const pactGoals = (json.goals ?? []).filter((g: any) => g.pact_id === pactId);
+        setPendingGoals(pactGoals);
+      } else {
+        console.error('Failed to fetch pending goals:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to fetch pending goals:', e);
+    } finally {
+      setModerationLoading(false);
+    }
+  }, [isAdmin, pact, pactId]);
+
+  const handleClearGoal = async (goalId: string) => {
+    try {
+      const res = await fetch(`/api/admin/goals/${goalId}/clear`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ action: 'cleared' }),
+      });
+      if (res.ok) {
+        await fetchPendingGoals();
+      } else {
+        const json = await res.json();
+        console.error('Failed to clear goal:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to clear goal:', e);
+    }
+  };
+
+  useEffect(() => {
+    if (tab === 'moderation') {
+      fetchPendingGoals();
+    }
+  }, [tab, fetchPendingGoals]);
   const categoryColor = getCategoryColor(pact?.category ?? null);
   const sprint = pact?.currentSprint ?? null;
   const sprintPct = sprint ? getSprintProgress(sprint.starts_at, sprint.ends_at) : 0;
@@ -299,6 +365,7 @@ export default function PactOverviewPage() {
     { key: 'members', label: 'Members' },
     { key: 'activity', label: 'Activity' },
     ...(isAdmin ? [{ key: 'applications' as TabKey, label: 'Applications' }] : []),
+    ...(isAdmin ? [{ key: 'moderation' as TabKey, label: 'Moderation' }] : []),
     ...(isAdmin ? [{ key: 'settings' as TabKey, label: 'Settings' }] : []),
   ];
 
@@ -534,6 +601,70 @@ export default function PactOverviewPage() {
             {/* Activity tab */}
             {tab === 'activity' && (
               <div>
+                {/* Proof submission */}
+                <Card className="mb-6 space-y-4">
+                  <h3 className="text-sm font-bold text-[#1B1F1A]" style={{ fontFamily: 'var(--font-display)' }}>
+                    Share Your Proof
+                  </h3>
+                  <p className="text-xs text-[#5C6B5E]">
+                    Upload an image, audio, or video file to share your progress with the team.
+                  </p>
+                  <div className="space-y-3">
+                    <input
+                      type="file"
+                      accept="image/*,audio/*,video/*"
+                      id="proof-upload"
+                      className="hidden"
+                      onChange={async (e) => {
+                        const file = e.target.files?.[0];
+                        if (!file) return;
+
+                        setUploadingProof(true);
+                        setUploadError('');
+
+                        // Upload proof
+                        const formData = new FormData();
+                        formData.append('file', file);
+                        formData.append('pact_id', pactId);
+                        formData.append('user_id', user?.id ?? '');
+
+                        try {
+                          const res = await fetch('/api/pact-activity/proof', {
+                            method: 'POST',
+                            body: formData,
+                          });
+                          const json = await res.json();
+
+                          if (res.ok) {
+                            // Refresh activity
+                            await fetchExtra();
+                            // Clear the file input
+                            e.target.value = '';
+                          } else {
+                            setUploadError(json.error || 'Failed to upload proof');
+                          }
+                        } catch (err) {
+                          console.error('Failed to upload proof:', err);
+                          setUploadError('Failed to upload proof. Please try again.');
+                        } finally {
+                          setUploadingProof(false);
+                        }
+                      }}
+                    />
+                    <Button
+                      size="sm"
+                      variant="secondary"
+                      loading={uploadingProof}
+                      onClick={() => document.getElementById('proof-upload')?.click()}
+                    >
+                      Upload Proof
+                    </Button>
+                    {uploadError && (
+                      <p className="text-xs text-[#E07A5F]">{uploadError}</p>
+                    )}
+                  </div>
+                </Card>
+
                 {notifications.length === 0 && !extraLoading ? (
                   <Card className="text-center py-10">
                     <p className="text-[#8FA38F] text-sm">No activity yet for this pact.</p>
@@ -555,33 +686,118 @@ export default function PactOverviewPage() {
                     {/* Timeline line */}
                     <div className="absolute left-5 top-0 bottom-0 w-px bg-[#E0EBE1]" />
                     <div className="space-y-0">
-                      {notifications.map((notif) => (
-                        <div key={notif.id} className="relative flex gap-4 pb-4">
-                          {/* Dot */}
-                          <div className={cn(
-                            'relative z-10 w-10 h-10 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 text-base',
-                            notif.is_read ? 'bg-[#F0F5F0]' : 'bg-[#D8EDDA]'
-                          )}>
-                            {notifIcon(notif.type)}
-                          </div>
-                          <Card className={cn('flex-1 py-3 px-4', !notif.is_read && 'border-[#74C69D]')}>
-                            <div className="flex items-start justify-between gap-2">
-                              <p className="text-sm font-semibold text-[#1B1F1A] leading-snug">{notif.title}</p>
-                              <p className="text-[10px] text-[#8FA38F] flex-shrink-0 whitespace-nowrap">
-                                {formatTimeAgo(notif.created_at)}
-                              </p>
+                      {notifications.map((notif) => {
+                        let proofData = null;
+                        try {
+                          proofData = notif.data ? JSON.parse(notif.data as string) : null;
+                        } catch { }
+
+                        const isProofUpload = notif.type === 'proof_upload';
+
+                        return (
+                          <div key={notif.id} className="relative flex gap-4 pb-4">
+                            {/* Dot */}
+                            <div className={cn(
+                              'relative z-10 w-10 h-10 rounded-full border-2 border-white flex items-center justify-center flex-shrink-0 text-base',
+                              notif.is_read ? 'bg-[#F0F5F0]' : 'bg-[#D8EDDA]'
+                            )}>
+                              {notifIcon(notif.type)}
                             </div>
-                            {notif.body && (
-                              <p className="text-xs text-[#5C6B5E] mt-1">{notif.body}</p>
-                            )}
-                          </Card>
-                        </div>
-                      ))}
+                            <Card className={cn('flex-1 py-3 px-4', !notif.is_read && 'border-[#74C69D]')}>
+                              <div className="flex items-start justify-between gap-2">
+                                <p className="text-sm font-semibold text-[#1B1F1A] leading-snug">{notif.title}</p>
+                                <p className="text-[10px] text-[#8FA38F] flex-shrink-0 whitespace-nowrap">
+                                  {formatTimeAgo(notif.created_at)}
+                                </p>
+                              </div>
+                              {notif.body && (
+                                <p className="text-xs text-[#5C6B5E] mt-1">{notif.body}</p>
+                              )}
+                              {isProofUpload && proofData?.proof_url && (
+                                <div className="mt-3 flex gap-2">
+                                  <Button
+                                    size="sm"
+                                    variant="secondary"
+                                    onClick={() => {
+                                      // Detect file type from URL extension as fallback
+                                      const url = proofData.proof_url;
+                                      const ext = url.split('.').pop()?.toLowerCase() || '';
+                                      const detectedType = ext.match(/^(jpg|jpeg|png|gif|webp)$/) ? 'image' :
+                                                           ext.match(/^(mp4|webm|mov|avi)$/) ? 'video' :
+                                                           ext.match(/^(mp3|wav|ogg|m4a)$/) ? 'audio' : proofData.proof_type;
+                                      console.log('[Proof Modal] Opening modal with type:', detectedType, 'from URL:', url);
+                                      setProofModal({ open: true, url: proofData.proof_url, type: detectedType });
+                                    }}
+                                  >
+                                    Tap to view
+                                  </Button>
+                                  {proofData.uploaded_by === user?.id && (
+                                    <Button
+                                      size="sm"
+                                      variant="danger"
+                                      onClick={async () => {
+                                        try {
+                                          const res = await fetch(`/api/pact-activity/proof/${notif.id}/delete`, {
+                                            method: 'POST',
+                                          });
+                                          if (res.ok) {
+                                            await fetchExtra();
+                                          }
+                                        } catch (e) {
+                                          console.error('Failed to delete proof:', e);
+                                        }
+                                      }}
+                                    >
+                                      Delete
+                                    </Button>
+                                  )}
+                                </div>
+                              )}
+                            </Card>
+                          </div>
+                        );
+                      })}
                     </div>
                   </div>
                 )}
               </div>
             )}
+
+            {/* Proof Modal */}
+            <Modal
+              isOpen={proofModal.open}
+              onClose={() => setProofModal({ open: false, url: '', type: '' })}
+              title="Proof"
+            >
+              {proofModal.type === 'image' ? (
+                <img
+                  src={proofModal.url}
+                  alt="Proof"
+                  className="rounded-lg max-h-[70vh] w-auto object-contain mx-auto"
+                />
+              ) : proofModal.type === 'video' ? (
+                <video
+                  src={proofModal.url}
+                  controls
+                  className="rounded-lg max-h-[70vh] w-auto mx-auto"
+                />
+              ) : proofModal.type === 'audio' ? (
+                <audio
+                  src={proofModal.url}
+                  controls
+                  className="w-full"
+                />
+              ) : (
+                <a
+                  href={proofModal.url}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm text-[#2D6A4F] underline"
+                >
+                  View proof file
+                </a>
+              )}
+            </Modal>
 
             {/* Applications tab (admin only) */}
             {tab === 'applications' && isAdmin && (
@@ -656,6 +872,50 @@ export default function PactOverviewPage() {
                   </div>
                 </div>
                 <p className="text-xs text-[#8FA38F]">Settings editing coming soon.</p>
+              </Card>
+            )}
+
+            {/* Moderation tab (admin only) */}
+            {tab === 'moderation' && isAdmin && (
+              <Card className="space-y-4">
+                <h3 className="text-base font-bold text-[#1B1F1A]" style={{ fontFamily: 'var(--font-display)' }}>
+                  Moderation Queue
+                </h3>
+                <p className="text-sm text-[#5C6B5E]">
+                  Approve goals, evidence, and appeals for this pact before they become visible to members.
+                </p>
+
+                {moderationLoading ? (
+                  <p className="text-sm text-[#8FA38F]">Loading...</p>
+                ) : pendingGoals.length === 0 ? (
+                  <p className="text-sm text-[#5C6B5E]">No pending goals for this pact.</p>
+                ) : (
+                  <div className="space-y-3">
+                    {pendingGoals.map((goal) => (
+                      <Card key={goal.id} className="p-4">
+                        <div className="space-y-3">
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex-1">
+                              <p className="text-sm font-semibold text-[#1B1F1A] mb-1">{goal.title}</p>
+                              <p className="text-xs text-[#5C6B5E] line-clamp-2">{goal.measurable_outcome}</p>
+                              <p className="text-[11px] text-[#8FA38F] mt-2">
+                                By {goal.profiles?.full_name ?? goal.profiles?.username ?? 'Unknown'}
+                              </p>
+                            </div>
+                            <div className="flex gap-2">
+                              <Button
+                                size="sm"
+                                onClick={() => handleClearGoal(goal.id)}
+                              >
+                                Clear
+                              </Button>
+                            </div>
+                          </div>
+                        </div>
+                      </Card>
+                    ))}
+                  </div>
+                )}
               </Card>
             )}
           </div>

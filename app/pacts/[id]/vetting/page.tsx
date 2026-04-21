@@ -168,42 +168,52 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
   const handleApprove = async (goalId: string) => {
     if (!user || myVotes[goalId] || votingGoal === goalId) return;
     setVotingGoal(goalId);
-    const supabase = createClient();
 
-    await supabase.from('goal_approvals').insert({
-      goal_id: goalId,
-      reviewer_id: user.id,
-      decision: 'approved',
-      comment: null,
-    });
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/vetting/goals/${goalId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'approved', comment: null }),
+      });
 
-    setMyVotes((prev) => ({ ...prev, [goalId]: 'approved' }));
-    setVotingGoal(null);
+      if (res.ok) {
+        setMyVotes((prev) => ({ ...prev, [goalId]: 'approved' }));
+      } else {
+        const json = await res.json();
+        console.error('Failed to approve goal:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to approve goal:', e);
+    } finally {
+      setVotingGoal(null);
+    }
   };
 
   // ── Request changes modal submit ────────────────────────────────────────────
   const handleRequestChanges = async () => {
     if (!user || !changeComment.trim()) return;
     setChangeSending(true);
-    const supabase = createClient();
 
-    await supabase.from('goal_approvals').insert({
-      goal_id: changeModal.goalId,
-      reviewer_id: user.id,
-      decision: 'change_requested',
-      comment: changeComment.trim(),
-    });
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/vetting/goals/${changeModal.goalId}/approve`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ decision: 'change_requested', comment: changeComment.trim() }),
+      });
 
-    await supabase
-      .from('goals')
-      .update({ status: 'revision_requested' })
-      .eq('id', changeModal.goalId);
-
-    setMyVotes((prev) => ({ ...prev, [changeModal.goalId]: 'change_requested' }));
-    setChangeComment('');
-    setChangeModal({ open: false, goalId: '', goalTitle: '' });
-    setChangeSending(false);
-    await fetchGoals();
+      if (res.ok) {
+        setMyVotes((prev) => ({ ...prev, [changeModal.goalId]: 'change_requested' }));
+        setChangeModal({ open: false, goalId: '', goalTitle: '' });
+        setChangeComment('');
+      } else {
+        const json = await res.json();
+        console.error('Failed to request changes:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to request changes:', e);
+    } finally {
+      setChangeSending(false);
+    }
   };
 
   // ── Check vetting complete ─────────────────────────────────────────────────
@@ -231,10 +241,13 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
               className="text-2xl md:text-3xl font-bold text-[#1B1F1A] mb-2"
               style={{ fontFamily: 'var(--font-display)' }}
             >
-              Set Your Goal
+              {myGoal ? 'Your Goal' : 'Set Your Goal'}
             </h1>
             <p className="text-[#5C6B5E] text-sm leading-relaxed">
-              Define what you&apos;re committing to this sprint and how you&apos;ll prove it. Once submitted, your teammates will review and approve your goal.
+              {myGoal
+                ? 'Your goal has been submitted. Wait for your teammates to review and approve it.'
+                : 'Define what you&apos;re committing to this sprint and how you&apos;ll prove it. Once submitted, your teammates will review and approve your goal.'
+              }
             </p>
           </div>
 
@@ -250,50 +263,56 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
           )}
 
           {/* ── MY GOAL SECTION ─────────────────────────────────────────────── */}
-          <section>
-            <h2
-              className="text-base font-bold text-[#1B1F1A] mb-3"
-              style={{ fontFamily: 'var(--font-display)' }}
-            >
-              Your Goal
-            </h2>
+          {pact?.status === 'active' ? (
+            <Card className="text-center py-8">
+              <p className="text-sm font-semibold text-[#1B1F1A] mb-2">Sprint In Progress</p>
+              <p className="text-xs text-[#5C6B5E]">Goal setting is closed during the active sprint phase.</p>
+            </Card>
+          ) : (
+            <section>
+              <h2
+                className="text-base font-bold text-[#1B1F1A] mb-3"
+                style={{ fontFamily: 'var(--font-display)' }}
+              >
+                Your Goal
+              </h2>
 
-            {dataLoading ? (
-              <Card className="space-y-3">
-                <Skeleton className="h-4 w-48" />
-                <Skeleton className="h-4 w-64" />
-                <Skeleton className="h-10 w-full" />
-              </Card>
-            ) : myGoal ? (
-              /* Goal already submitted */
-              <Card className="space-y-4">
-                <div className="flex items-start justify-between gap-3 flex-wrap">
-                  <div className="flex-1">
-                    <p className="text-sm font-bold text-[#1B1F1A]">{myGoal.title}</p>
-                    {myGoal.description && (
-                      <p className="text-xs text-[#5C6B5E] mt-1">{myGoal.description}</p>
-                    )}
+              {dataLoading ? (
+                <Card className="space-y-3">
+                  <Skeleton className="h-4 w-48" />
+                  <Skeleton className="h-4 w-64" />
+                  <Skeleton className="h-10 w-full" />
+                </Card>
+              ) : myGoal ? (
+                /* Goal already submitted */
+                <Card className="space-y-4">
+                  <div className="flex items-start justify-between gap-3 flex-wrap">
+                    <div className="flex-1">
+                      <p className="text-sm font-bold text-[#1B1F1A]">{myGoal.title}</p>
+                      {myGoal.description && (
+                        <p className="text-xs text-[#5C6B5E] mt-1">{myGoal.description}</p>
+                      )}
+                    </div>
+                    <div className="flex flex-col gap-1.5 items-end">
+                      <Badge variant="pending">Awaiting Moderation</Badge>
+                      <Badge variant="pending">Awaiting Peer Approval</Badge>
+                    </div>
                   </div>
-                  <div className="flex flex-col gap-1.5 items-end">
-                    <Badge variant="pending">Awaiting Moderation</Badge>
-                    <Badge variant="pending">Awaiting Peer Approval</Badge>
-                  </div>
-                </div>
 
-                {myGoal.measurable_outcome && (
-                  <div className="bg-[#F5F7F0] rounded-[10px] p-3">
-                    <p className="text-[10px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Measurable Outcome</p>
-                    <p className="text-xs text-[#1B1F1A]">{myGoal.measurable_outcome}</p>
-                  </div>
-                )}
-                {myGoal.proof_specification && (
-                  <div className="bg-[#F5F7F0] rounded-[10px] p-3">
-                    <p className="text-[10px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Proof Specification</p>
-                    <p className="text-xs text-[#1B1F1A]">{myGoal.proof_specification}</p>
-                  </div>
-                )}
-                <div className="flex items-center gap-2 flex-wrap">
-                  <ModerationBadge status={myGoal.moderation_status} />
+                  {myGoal.measurable_outcome && (
+                    <div className="bg-[#F5F7F0] rounded-[10px] p-3">
+                      <p className="text-[10px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Measurable Outcome</p>
+                      <p className="text-xs text-[#1B1F1A]">{myGoal.measurable_outcome}</p>
+                    </div>
+                  )}
+                  {myGoal.proof_specification && (
+                    <div className="bg-[#F5F7F0] rounded-[10px] p-3">
+                      <p className="text-[10px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Proof Specification</p>
+                      <p className="text-xs text-[#1B1F1A]">{myGoal.proof_specification}</p>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <ModerationBadge status={myGoal.moderation_status} />
                   <Badge variant={
                     myGoal.status === 'approved' ? 'active' :
                     myGoal.status === 'revision_requested' ? 'failed' : 'pending'
@@ -352,6 +371,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
               </Card>
             )}
           </section>
+          )}
 
           {/* ── TEAM'S GOALS SECTION ─────────────────────────────────────────── */}
           <section>
