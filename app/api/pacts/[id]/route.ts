@@ -7,12 +7,8 @@ export async function GET(
   request: Request,
   { params }: { params: Promise<{ id: string }> }
 ) {
-  console.log('[api/pacts/[id]] ROUTE HIT - Starting request processing')
-  
   try {
     const { id: pactId } = await params
-    
-    console.log('[api/pacts/[id]] Creating Supabase SSR client')
     const cookieStore = await cookies()
     const supabase = createServerClient(
       process.env.NEXT_PUBLIC_SUPABASE_URL!,
@@ -26,18 +22,14 @@ export async function GET(
       }
     )
     
-    console.log('[api/pacts/[id]] Getting user from session')
     const { data: { user }, error: authError } = await supabase.auth.getUser()
     
     if (authError || !user) {
-      console.error('[api/pacts/[id]] Auth error:', authError)
       return NextResponse.json(
         { error: 'Unauthorized: You must be logged in' },
         { status: 401 }
       )
     }
-    
-    console.log('[api/pacts/[id]] User authenticated:', user.id)
     
     // Create service role client for database operations
     const serviceClient = createClient(
@@ -45,7 +37,6 @@ export async function GET(
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
     
-    console.log('[api/pacts/[id]] Fetching pact data')
     
     // Fetch pact with members and sprint
     const [pactResult, membersResult, sprintResult] = await Promise.all([
@@ -55,14 +46,11 @@ export async function GET(
     ])
     
     if (pactResult.error || !pactResult.data) {
-      console.error('[api/pacts/[id]] Pact not found:', pactResult.error)
       return NextResponse.json(
         { error: 'Pact not found' },
         { status: 404 }
       )
     }
-    
-    console.log('[api/pacts/[id]] Pact found:', pactResult.data.id)
     
     const responseData = {
       ...pactResult.data,
@@ -70,12 +58,10 @@ export async function GET(
       currentSprint: sprintResult.data ?? null
     }
     
-    console.log('[api/pacts/[id]] Returning pact data')
     return NextResponse.json(responseData)
     
   } catch (err) {
-    console.error('[api/pacts/[id]] CRASH:', err)
-    console.error('[api/pacts/[id]] Error details:', err instanceof Error ? err.stack : String(err))
+    console.error('[api/pacts/[id]] Error:', err)
     return NextResponse.json(
       { error: String(err) },
       { status: 500 }

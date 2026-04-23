@@ -86,42 +86,41 @@ export async function POST(
     // Get all members who submitted goals
     const memberIds = goals.map((g) => g.user_id)
 
-    console.log('[Recalculate Statuses] Members with goals:', memberIds)
+    // Fetch all votes for these goals in a single query
+    const { data: allVotes } = await serviceClient
+      .from('goal_votes')
+      .select('goal_id, voter_id')
+      .eq('decision', 'approved')
+      .in('goal_id', goals.map(g => g.id))
 
+    // Fetch all pact members once
+    const { data: allMembers } = await serviceClient
+      .from('pact_members')
+      .select('user_id')
+      .eq('pact_id', pactId)
+      .eq('status', 'active')
+
+    // Build vote map by goal_id
+    const votesByGoal = new Map<string, string[]>()
+    ;(allVotes ?? []).forEach(vote => {
+      if (!votesByGoal.has(vote.goal_id)) {
+        votesByGoal.set(vote.goal_id, [])
+      }
+      votesByGoal.get(vote.goal_id)!.push(vote.voter_id)
+    })
+
+    const allMemberIds = (allMembers ?? []).map(m => m.user_id)
     const updatedGoals = []
 
     // Recalculate status for each goal
     for (const goal of goals) {
-      // Get votes for this goal
-      const { data: votes } = await serviceClient
-        .from('goal_votes')
-        .select('voter_id')
-        .eq('goal_id', goal.id)
-        .eq('decision', 'approved')
-
-      const voterIds = votes?.map((v) => v.voter_id) ?? []
-
-      // Get ALL pact members (not just goal-submitters)
-      const { data: allMembers } = await serviceClient
-        .from('pact_members')
-        .select('user_id')
-        .eq('pact_id', pactId)
-        .eq('status', 'active')
+      const voterIds = votesByGoal.get(goal.id) ?? []
 
       // Exclude goal owner from required voters
-      const requiredVoters = (allMembers ?? []).map((m) => m.user_id).filter((id) => id !== goal.user_id)
+      const requiredVoters = allMemberIds.filter((id) => id !== goal.user_id)
 
       // Check if all other pact members have approved
       const allApproved = requiredVoters.length > 0 && requiredVoters.every((id) => voterIds.includes(id))
-
-      console.log('[Recalculate Statuses] Goal check:', {
-        goalId: goal.id,
-        goalOwnerId: goal.user_id,
-        currentStatus: goal.status,
-        requiredVoters,
-        voterIds,
-        allApproved,
-      })
 
       // Update status if needed
       if (allApproved && goal.status !== 'approved') {
@@ -130,11 +129,8 @@ export async function POST(
           .update({ status: 'approved' })
           .eq('id', goal.id)
 
-        if (updateError) {
-          console.error('[Recalculate Statuses] Error updating goal:', updateError)
-        } else {
+        if (!updateError) {
           updatedGoals.push(goal.id)
-          console.log('[Recalculate Statuses] Updated goal to approved:', goal.id)
         }
       }
     }

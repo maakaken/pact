@@ -14,3 +14,4 @@ CREATE UNIQUE INDEX IF NOT EXISTS goal_votes_unique_goal_voter ON goal_votes(goa
 -- Add index for faster lookups
 CREATE INDEX IF NOT EXISTS goal_votes_goal_id_idx ON goal_votes(goal_id);
 CREATE INDEX IF NOT EXISTS goal_votes_voter_id_idx ON goal_votes(voter_id);
+ 

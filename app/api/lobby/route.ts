@@ -61,20 +61,19 @@ export async function GET() {
         .select('*')
         .in('id', pactIds)
 
-      // Fetch sprints
-      const sprintResults = await Promise.all(
-        (pactsData ?? []).map((p) =>
-          serviceClient
-            .from('sprints')
-            .select('*')
-            .eq('pact_id', p.id)
-            .eq('sprint_number', p.current_sprint)
-            .maybeSingle()
-        )
-      )
+      // Fetch sprints in a single query
+      const { data: sprintsData } = await serviceClient
+        .from('sprints')
+        .select('*')
+        .in('pact_id', pactIds)
+      
+      // Build sprint map by matching pact_id and current_sprint
       const sprintMap = new Map()
-      ;(pactsData ?? []).forEach((p, i) => {
-        sprintMap.set(p.id, sprintResults[i].data ?? null)
+      ;(pactsData ?? []).forEach((pact) => {
+        const sprint = (sprintsData ?? []).find(
+          s => s.pact_id === pact.id && s.sprint_number === pact.current_sprint
+        )
+        sprintMap.set(pact.id, sprint ?? null)
       })
 
       // Fetch members without nested joins

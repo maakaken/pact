@@ -7,8 +7,7 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[invitations/send] Request received');
     
-    const { pact_id, emails } = await request.json();
-    console.log('[invitations/send] Parsed data:', { pact_id, emails: emails?.length });
+    const { pact_id, emails } = await request.json()
 
     if (!pact_id || !emails?.length) {
       console.error('[invitations/send] Missing required fields:', { pact_id: !!pact_id, emails: emails?.length });
@@ -32,11 +31,8 @@ export async function POST(request: NextRequest) {
     const { data: { user }, error: authError } = await supabase.auth.getUser();
     
     if (authError || !user) {
-      console.error('[invitations/send] Auth error:', authError);
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
-    
-    console.log('[invitations/send] User authenticated:', user.id);
 
     // Create service role client for database operations
     const serviceClient = createClient(
@@ -52,11 +48,8 @@ export async function POST(request: NextRequest) {
       .single();
 
     if (pactError || !pact) {
-      console.error('[invitations/send] Pact not found:', pactError);
       return NextResponse.json({ error: 'Pact not found' }, { status: 404 });
     }
-
-    console.log('[invitations/send] Pact found:', pact.name);
 
     // Create invitation records
     const invitations = emails.map((email: string) => ({
@@ -77,11 +70,8 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: error.message }, { status: 500 });
     }
 
-    console.log('[invitations/send] Created invitations:', created?.length);
-
     // Get base URL for invite links
-    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000';
-    console.log('[invitations/send] Using base URL:', baseUrl);
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
     // Return the invite links (in prototype, copy-paste links instead of emails)
     const inviteLinks = (created ?? []).map((inv: { email: string; token: string }) => ({
@@ -89,8 +79,6 @@ export async function POST(request: NextRequest) {
       token: inv.token,
       link: `${baseUrl}/invite/${inv.token}`,
     }));
-
-    console.log('[invitations/send] Generated invite links for:', inviteLinks.length);
 
     return NextResponse.json({ 
       success: true,

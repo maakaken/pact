@@ -9,36 +9,38 @@ export async function GET() {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     )
 
-    // Fetch pacts without nested join
-    const { data: pactsData, error: pactsError } = await serviceClient
-      .from('pacts')
-      .select('*')
-      .eq('is_public', true)
-      .in('status', ['forming', 'vetting', 'active'])
-      .order('created_at', { ascending: false })
+    // Fetch pacts and members in parallel
+    const [pactsResult, membersResult] = await Promise.all([
+      serviceClient
+        .from('pacts')
+        .select('*')
+        .eq('is_public', true)
+        .in('status', ['forming', 'vetting', 'active'])
+        .order('created_at', { ascending: false }),
+      serviceClient
+        .from('pact_members')
+        .select('*, profiles(*)')
+        .eq('status', 'active')
+    ])
 
-    if (pactsError) {
-      console.error('[Marketplace API] Error fetching pacts:', pactsError)
+    if (pactsResult.error) {
+      console.error('[Marketplace API] Error fetching pacts:', pactsResult.error)
       return NextResponse.json(
-        { error: pactsError.message },
+        { error: pactsResult.error.message },
         { status: 500 }
       )
     }
 
+    const pactsData = pactsResult.data
     if (!pactsData || pactsData.length === 0) {
       return NextResponse.json({ pacts: [] })
     }
 
-    // Fetch members for each pact
+    const membersData = membersResult.data ?? []
     const pactIds = pactsData.map(p => p.id)
-    const { data: membersData, error: membersError } = await serviceClient
-      .from('pact_members')
-      .select('*, profiles(*)')
-      .in('pact_id', pactIds)
-      .eq('status', 'active')
 
-    if (membersError) {
-      console.error('[Marketplace API] Error fetching members:', membersError)
+    if (membersResult.error) {
+      console.error('[Marketplace API] Error fetching members:', membersResult.error)
       // Return pacts without members if members fetch fails
       return NextResponse.json({
         pacts: pactsData.map(p => ({ ...p, pact_members: [] }))
