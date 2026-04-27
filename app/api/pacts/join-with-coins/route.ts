@@ -71,7 +71,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if user has sufficient balance
+    // Check if user has sufficient balance (validation only, no deduction)
     if (profile.coin_balance < pact.stake_amount) {
       return NextResponse.json(
         { error: 'Insufficient p-coins balance' },
@@ -79,7 +79,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Get current sprint
+    // Get current sprint (for reference only, no stake creation)
     const { data: sprint } = await serviceClient
       .from('sprints')
       .select('*')
@@ -91,44 +91,6 @@ export async function POST(request: Request) {
       return NextResponse.json(
         { error: 'Current sprint not found' },
         { status: 404 }
-      )
-    }
-
-    // Deduct coins from user balance
-    const { error: balanceError } = await serviceClient
-      .from('profiles')
-      .update({ coin_balance: profile.coin_balance - pact.stake_amount })
-      .eq('id', user.id)
-
-    if (balanceError) {
-      console.error('[Join with Coins] Error deducting coins:', balanceError)
-      return NextResponse.json(
-        { error: 'Failed to deduct coins' },
-        { status: 500 }
-      )
-    }
-
-    // Create stake record
-    const { error: stakeError } = await serviceClient
-      .from('stakes')
-      .insert({
-        pact_id,
-        sprint_id: sprint.id,
-        user_id: user.id,
-        amount: pact.stake_amount,
-        status: 'locked',
-      })
-
-    if (stakeError) {
-      console.error('[Join with Coins] Error creating stake:', stakeError)
-      // Rollback coin deduction
-      await serviceClient
-        .from('profiles')
-        .update({ coin_balance: profile.coin_balance })
-        .eq('id', user.id)
-      return NextResponse.json(
-        { error: 'Failed to create stake' },
-        { status: 500 }
       )
     }
 

@@ -76,7 +76,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Fetch pact to get stake amount
+    // Fetch pact to get stake amount and creator for validation
     const { data: pact, error: pactError } = await serviceClient
       .from('pacts')
       .select('stake_amount, created_by')
@@ -90,7 +90,7 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check user's coin balance
+    // Check user's coin balance (validation only, no deduction)
     const { data: profile } = await serviceClient
       .from('profiles')
       .select('coin_balance')
@@ -114,45 +114,6 @@ export async function POST(request: Request) {
       )
     }
 
-    // Deduct coins from user's balance
-    const { error: balanceError } = await serviceClient
-      .from('profiles')
-      .update({ coin_balance: coinBalance - stakeAmount })
-      .eq('id', user.id)
-
-    if (balanceError) {
-      console.error('[Marketplace Apply] Error deducting coins:', balanceError)
-      return NextResponse.json(
-        { error: 'Failed to deduct coins' },
-        { status: 500 }
-      )
-    }
-
-    // Create stake entry (locked status, no stripe_payment_intent_id)
-    const { error: stakeError } = await serviceClient
-      .from('stakes')
-      .insert({
-        pact_id,
-        sprint_id: null, // Will be updated when sprint starts
-        user_id: user.id,
-        amount: stakeAmount,
-        stripe_payment_intent_id: null,
-        status: 'locked',
-      })
-
-    if (stakeError) {
-      console.error('[Marketplace Apply] Error creating stake:', stakeError)
-      // Rollback coin deduction
-      await serviceClient
-        .from('profiles')
-        .update({ coin_balance: coinBalance })
-        .eq('id', user.id)
-      return NextResponse.json(
-        { error: 'Failed to create stake' },
-        { status: 500 }
-      )
-    }
-
     // Insert the application
     const { error: insertError } = await serviceClient
       .from('pact_applications')
@@ -164,17 +125,6 @@ export async function POST(request: Request) {
 
     if (insertError) {
       console.error('[Marketplace Apply] Error inserting application:', insertError)
-      // Rollback coin deduction and stake
-      await serviceClient
-        .from('profiles')
-        .update({ coin_balance: coinBalance })
-        .eq('id', user.id)
-      await serviceClient
-        .from('stakes')
-        .delete()
-        .eq('pact_id', pact_id)
-        .eq('user_id', user.id)
-        .eq('status', 'locked')
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }

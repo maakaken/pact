@@ -20,7 +20,7 @@ import { formatTimeAgo, formatCurrency, getCategoryColor, cn } from '@/lib/utils
 import type { Notification, Goal, PactMember, Profile } from '@/types';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
-type TabKey = 'members' | 'activity' | 'applications' | 'settings' | 'moderation';
+type TabKey = 'members' | 'activity' | 'applications' | 'settings' | 'moderation' | 'results';
 
 function getSprintProgress(startsAt: string, endsAt: string): number {
   const now = Date.now();
@@ -96,6 +96,8 @@ export default function PactOverviewPage() {
   const [proofModal, setProofModal] = useState<{ open: boolean; url: string; type: string }>({ open: false, url: '', type: '' });
   const [forceCompletingSprint, setForceCompletingSprint] = useState(false);
   const [reopeningSprint, setReopeningSprint] = useState(false);
+  const [resultsLoading, setResultsLoading] = useState(false);
+  const [verdicts, setVerdicts] = useState<any[]>([]);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -226,6 +228,23 @@ export default function PactOverviewPage() {
   useEffect(() => {
     fetchExtra();
   }, [fetchExtra]);
+
+  const fetchResults = async () => {
+    setResultsLoading(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/results`);
+      const json = await res.json();
+      if (res.ok) {
+        setVerdicts(json.verdicts ?? []);
+      } else {
+        console.error('Failed to fetch results:', json.error);
+      }
+    } catch (e) {
+      console.error('Failed to fetch results:', e);
+    } finally {
+      setResultsLoading(false);
+    }
+  };
 
   // Nudge handler
   const handleNudge = async (targetUserId: string) => {
@@ -413,7 +432,10 @@ export default function PactOverviewPage() {
     if (tab === 'moderation') {
       fetchPendingGoals();
     }
-  }, [tab, fetchPendingGoals]);
+    if (tab === 'results' && pact?.status === 'completed') {
+      fetchResults();
+    }
+  }, [tab, fetchPendingGoals, pact?.status]);
   const categoryColor = getCategoryColor(pact?.category ?? null);
   const sprint = pact?.currentSprint ?? null;
   const sprintPct = sprint ? getSprintProgress(sprint.starts_at, sprint.ends_at) : 0;
@@ -424,6 +446,7 @@ export default function PactOverviewPage() {
   const tabs: { key: TabKey; label: string }[] = [
     { key: 'members', label: 'Members' },
     { key: 'activity', label: 'Activity' },
+    ...(pact?.status === 'completed' ? [{ key: 'results' as TabKey, label: 'Results' }] : []),
     ...(isAdmin ? [{ key: 'applications' as TabKey, label: 'Applications' }] : []),
     ...(isAdmin ? [{ key: 'moderation' as TabKey, label: 'Moderation' }] : []),
     ...(isAdmin ? [{ key: 'settings' as TabKey, label: 'Settings' }] : []),
@@ -1027,6 +1050,87 @@ export default function PactOverviewPage() {
                   </div>
                 )}
               </Card>
+            )}
+
+            {/* Results tab */}
+            {tab === 'results' && (
+              <div className="space-y-4">
+                <h3 className="text-base font-bold text-[#1B1F1A]" style={{ fontFamily: 'var(--font-display)' }}>
+                  Sprint Results
+                </h3>
+                {resultsLoading ? (
+                  <p className="text-sm text-[#8FA38F]">Loading results...</p>
+                ) : verdicts.length === 0 ? (
+                  <Card className="text-center py-8">
+                    <p className="text-[#8FA38F] text-sm">No results available yet.</p>
+                  </Card>
+                ) : (
+                  <>
+                    <div className="space-y-3">
+                      {verdicts.map((v) => (
+                        <div
+                          key={v.id}
+                          className={`rounded-[20px] p-4 border flex items-center gap-4 ${
+                            v.outcome === 'passed'
+                              ? 'bg-[#D8EDDA] border-[#74C69D]'
+                              : v.outcome === 'failed'
+                              ? 'bg-[#FDF0EC] border-[#F0C4B8]'
+                              : 'bg-[#FEF3E2] border-[#F4A261]/40'
+                          }`}
+                        >
+                          <Avatar src={v.profiles?.avatar_url} name={v.profiles?.full_name ?? v.profiles?.username} size="sm" />
+                          <div className="flex-1 min-w-0">
+                            <p className="font-semibold text-sm text-[#1B1F1A]">{v.profiles?.full_name ?? v.profiles?.username}</p>
+                            <p className="text-xs text-[#5C6B5E] mt-0.5">
+                              {v.approve_count}✅ · {v.reject_count}❌ · {v.sympathy_count}🤍
+                            </p>
+                          </div>
+                          <div className="text-right">
+                            {v.outcome === 'passed' && (
+                              <>
+                                <p className="text-xs font-bold text-[#2D6A4F]">PASSED</p>
+                                {v.dividend_amount > 0 && (
+                                  <p className="font-[family-name:var(--font-display)] font-bold text-[#1B4332] text-sm">
+                                    +{formatCurrency(v.dividend_amount)}
+                                  </p>
+                                )}
+                              </>
+                            )}
+                            {v.outcome === 'failed' && (
+                              <>
+                                <p className="text-xs font-bold text-[#E07A5F]">FAILED</p>
+                                <p className="font-[family-name:var(--font-display)] font-bold text-[#E07A5F] text-sm">
+                                  -{formatCurrency(pact?.stake_amount ?? 0)}
+                                </p>
+                              </>
+                            )}
+                            {v.outcome === 'sympathy_pass' && (
+                              <p className="text-xs font-bold text-[#B5540A]">SYMPATHY</p>
+                            )}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+
+                    {/* Financial breakdown */}
+                    {pact && (
+                      <Card>
+                        <h4 className="font-semibold text-[#1B1F1A] mb-4 text-sm">Financial Breakdown</h4>
+                        <div className="space-y-2 text-sm">
+                          <div className="flex justify-between">
+                            <span className="text-[#5C6B5E]">Stake per member</span>
+                            <span className="font-[family-name:var(--font-display)] font-bold text-[#1B1F1A]">{formatCurrency(pact.stake_amount)}</span>
+                          </div>
+                          <div className="flex justify-between">
+                            <span className="text-[#5C6B5E]">Platform fee (5%)</span>
+                            <span className="text-[#E07A5F]">−{formatCurrency(pact.stake_amount * 0.05)}</span>
+                          </div>
+                        </div>
+                      </Card>
+                    )}
+                  </>
+                )}
+              </div>
             )}
           </div>
         </div>

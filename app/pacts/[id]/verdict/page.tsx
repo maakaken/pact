@@ -218,8 +218,8 @@ export default function VerdictPage() {
       });
 
       if (res.ok) {
-        // Refetch pact data to show updated state
-        await refetchPact();
+        // Redirect to results page
+        router.push(`/pacts/${pactId}/results`);
       } else {
         const json = await res.json();
         console.error('Failed to force end voting:', json.error);
