@@ -94,6 +94,8 @@ export default function PactOverviewPage() {
   const [uploadingProof, setUploadingProof] = useState(false);
   const [uploadError, setUploadError] = useState('');
   const [proofModal, setProofModal] = useState<{ open: boolean; url: string; type: string }>({ open: false, url: '', type: '' });
+  const [forceCompletingSprint, setForceCompletingSprint] = useState(false);
+  const [reopeningSprint, setReopeningSprint] = useState(false);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -307,6 +309,50 @@ export default function PactOverviewPage() {
       console.error('Failed to start sprint:', e);
     } finally {
       setStartingSprint(false);
+    }
+  };
+
+  const handleForceCompleteSprint = async () => {
+    setForceCompletingSprint(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/force-complete-sprint`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        // Refresh the page to show updated state
+        router.refresh();
+      } else {
+        const json = await res.json();
+        console.error('Failed to force complete sprint:', json.error);
+        alert(json.error || 'Failed to force complete sprint');
+      }
+    } catch (e) {
+      console.error('Failed to force complete sprint:', e);
+      alert('Failed to force complete sprint');
+    } finally {
+      setForceCompletingSprint(false);
+    }
+  };
+
+  const handleReopenSprint = async () => {
+    setReopeningSprint(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/reopen-sprint`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        // Refresh the page to show updated state
+        router.refresh();
+      } else {
+        const json = await res.json();
+        console.error('Failed to reopen sprint:', json.error);
+        alert(json.error || 'Failed to reopen sprint');
+      }
+    } catch (e) {
+      console.error('Failed to reopen sprint:', e);
+      alert('Failed to reopen sprint');
+    } finally {
+      setReopeningSprint(false);
     }
   };
 
@@ -541,6 +587,32 @@ export default function PactOverviewPage() {
                 >
                   {ctaAction.label}
                 </Link>
+              )}
+
+              {/* TEMP: Force End Sprint Button */}
+              {isAdmin && sprint && sprint.status !== 'completed' && sprint.status !== 'verdict_phase' && (
+                <Button
+                  onClick={handleForceCompleteSprint}
+                  loading={forceCompletingSprint}
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                >
+                  Force End Sprint (TEMP)
+                </Button>
+              )}
+
+              {/* TEMP: Reopen Sprint Button */}
+              {isAdmin && sprint && sprint.status === 'verdict_phase' && sprintPct < 100 && (
+                <Button
+                  onClick={handleReopenSprint}
+                  loading={reopeningSprint}
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                >
+                  Reopen Sprint (TEMP)
+                </Button>
               )}
             </Card>
           )}

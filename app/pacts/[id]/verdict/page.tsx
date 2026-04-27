@@ -122,6 +122,8 @@ export default function VerdictPage() {
       }
 
       const allVoteList = (json.votes as Vote[]) ?? [];
+      console.log('[Verdict Page] Fetched votes:', allVoteList.length, 'votes');
+      console.log('[Verdict Page] Current user ID:', user.id);
       setSubmissions((json.submissions as SubmissionWithProfile[]) ?? []);
       setAllVotes(allVoteList);
 
@@ -171,23 +173,33 @@ export default function VerdictPage() {
     if (!decision) return;
 
     setSubmittingFor((prev) => ({ ...prev, [targetUserId]: true }));
-    const supabase = createClient();
 
-    // upsert
-    await supabase.from('votes').upsert(
-      {
-        sprint_id: pact.currentSprint.id,
-        submission_id: submissionId,
-        voter_id: user.id,
-        target_user_id: targetUserId,
-        decision,
-      },
-      { onConflict: 'sprint_id,voter_id,target_user_id' }
-    );
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/verdict/vote`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sprint_id: pact.currentSprint.id,
+          submission_id: submissionId,
+          target_user_id: targetUserId,
+          decision,
+        }),
+      });
 
-    setMyVotes((prev) => ({ ...prev, [targetUserId]: decision }));
-    setEditingFor((prev) => ({ ...prev, [targetUserId]: false }));
-    setSubmittingFor((prev) => ({ ...prev, [targetUserId]: false }));
+      if (res.ok) {
+        setMyVotes((prev) => ({ ...prev, [targetUserId]: decision }));
+        setEditingFor((prev) => ({ ...prev, [targetUserId]: false }));
+      } else {
+        const json = await res.json();
+        console.error('Failed to submit vote:', json.error);
+        alert(json.error || 'Failed to submit vote');
+      }
+    } catch (e) {
+      console.error('Failed to submit vote:', e);
+      alert('Failed to submit vote');
+    } finally {
+      setSubmittingFor((prev) => ({ ...prev, [targetUserId]: false }));
+    }
   };
 
   // Members to vote on = all members except self
@@ -200,7 +212,9 @@ export default function VerdictPage() {
   // Check if admin has voted on each member
   const adminVotesForMember = (targetUserId: string) => {
     if (!adminMember) return false;
-    return allVotes.some((v) => v.voter_id === adminMember.user_id && v.target_user_id === targetUserId);
+    const hasVoted = allVotes.some((v) => v.voter_id === adminMember.user_id && v.target_user_id === targetUserId);
+    console.log('[Verdict Page] Admin vote check for target', targetUserId, ':', hasVoted, 'Admin ID:', adminMember.user_id);
+    return hasVoted;
   };
 
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
@@ -412,6 +426,15 @@ export default function VerdictPage() {
                           <div className="bg-[#FEF3E2] border border-[#F4C678] rounded-[10px] px-3 py-2">
                             <p className="text-[11px] text-[#B5540A] font-medium">
                               Admin must vote first. Waiting for {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'admin'} to cast their vote.
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Voting opened notification */}
+                        {!isAdmin && adminHasVoted && (
+                          <div className="bg-[#D8EDDA] border border-[#74C69D] rounded-[10px] px-3 py-2">
+                            <p className="text-[11px] text-[#1B4332] font-medium">
+                              ✅ Voting is now open! {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'Admin'} has cast their vote.
                             </p>
                           </div>
                         )}

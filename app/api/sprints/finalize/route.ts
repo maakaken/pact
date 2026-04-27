@@ -6,33 +6,66 @@ export async function POST(request: NextRequest) {
   try {
     const supabase = createServerClient();
 
-    // Find all sprints in verdict_phase that have passed their deadline
-    const { data: sprints, error } = await supabase
-      .from('sprints')
-      .select('id, pact_id, verdict_ends_at')
-      .in('status', ['active', 'verdict_phase'])
-      .lt('verdict_ends_at', new Date().toISOString());
+    const results = [];
 
-    if (error) {
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    // Phase 1: Transition active sprints to verdict_phase when sprint ends
+    const { data: activeSprints, error: activeError } = await supabase
+      .from('sprints')
+      .select('id, pact_id, ends_at')
+      .eq('status', 'active')
+      .lt('ends_at', new Date().toISOString());
+
+    if (activeError) {
+      console.error('Error fetching active sprints:', activeError);
+    } else {
+      for (const sprint of activeSprints ?? []) {
+        try {
+          const { error: updateSprintError } = await supabase
+            .from('sprints')
+            .update({ status: 'verdict_phase' })
+            .eq('id', sprint.id);
+
+          if (updateSprintError) {
+            console.error('Error updating sprint to verdict_phase:', updateSprintError);
+            results.push({ sprint_id: sprint.id, status: 'error', error: String(updateSprintError) });
+            continue;
+          }
+
+          const { error: updatePactError } = await supabase
+            .from('pacts')
+            .update({ status: 'verdict' })
+            .eq('id', sprint.pact_id);
+
+          if (updatePactError) {
+            console.error('Error updating pact to verdict:', updatePactError);
+            results.push({ sprint_id: sprint.id, status: 'error', error: String(updatePactError) });
+            continue;
+          }
+
+          results.push({ sprint_id: sprint.id, status: 'transitioned_to_verdict' });
+        } catch (err) {
+          results.push({ sprint_id: sprint.id, status: 'error', error: String(err) });
+        }
+      }
     }
 
-    const results = [];
-    for (const sprint of sprints ?? []) {
-      try {
-        // Check if all members have voted
-        const { data: pactMembers } = await supabase
-          .from('pact_members')
-          .select('user_id')
-          .eq('pact_id', sprint.pact_id)
-          .eq('status', 'active');
+    // Phase 2: Calculate verdicts for sprints in verdict_phase that have passed their verdict deadline
+    const { data: verdictSprints, error: verdictError } = await supabase
+      .from('sprints')
+      .select('id, pact_id, verdict_ends_at')
+      .eq('status', 'verdict_phase')
+      .lt('verdict_ends_at', new Date().toISOString());
 
-        if (!pactMembers?.length) continue;
-
-        await calculateVerdicts(sprint.id);
-        results.push({ sprint_id: sprint.id, status: 'finalized' });
-      } catch (err) {
-        results.push({ sprint_id: sprint.id, status: 'error', error: String(err) });
+    if (verdictError) {
+      console.error('Error fetching verdict sprints:', verdictError);
+    } else {
+      for (const sprint of verdictSprints ?? []) {
+        try {
+          await calculateVerdicts(sprint.id);
+          results.push({ sprint_id: sprint.id, status: 'finalized' });
+        } catch (err) {
+          results.push({ sprint_id: sprint.id, status: 'error', error: String(err) });
+        }
       }
     }
 

@@ -1,15 +1,21 @@
 import { createServerClient } from './supabase/server';
+import { SupabaseClient } from '@supabase/supabase-js';
 
-export async function runLiquidationEngine(sprintId: string) {
-  const supabase = createServerClient();
+export async function runLiquidationEngine(sprintId: string, client?: SupabaseClient) {
+  const supabase = client || createServerClient();
 
   // Get all verdicts for this sprint
   const { data: verdicts, error: verdictsError } = await supabase
     .from('verdicts')
-    .select('*, stakes(*)')
+    .select('*')
     .eq('sprint_id', sprintId);
 
-  if (verdictsError || !verdicts) throw new Error('Failed to fetch verdicts');
+  if (verdictsError) throw new Error('Failed to fetch verdicts: ' + verdictsError.message);
+
+  if (!verdicts || verdicts.length === 0) {
+    console.log('[Liquidation] No verdicts found for sprint, skipping liquidation');
+    return { failurePool: 0, distributable: 0, dividend: 0, winnerCount: 0 };
+  }
 
   // Get sprint stakes
   const { data: stakes } = await supabase
@@ -110,12 +116,15 @@ export async function runLiquidationEngine(sprintId: string) {
   // Process sympathy pass members - proportional stake return
   for (const verdict of sympathyVerdicts) {
     const stake = stakeMap[verdict.user_id];
+    let returnAmount = 0;
+
     if (stake) {
       // Calculate proportional return based on sympathy_ratio
       // sympathy_ratio = number of sympathy votes / total eligible voters
       // If 1 out of 10 voted sympathy, ratio = 0.1, so 10% of stake is returned
-      const sympathyRatio = verdict.sympathy_ratio ?? 0;
-      const returnAmount = stake.amount * sympathyRatio;
+      const totalVotes = verdict.approve_count + verdict.reject_count + verdict.sympathy_count;
+      const sympathyRatio = totalVotes > 0 ? verdict.sympathy_count / totalVotes : 0;
+      returnAmount = stake.amount * sympathyRatio;
       const forfeitedAmount = stake.amount - returnAmount;
 
       // Update stake status to partially returned
@@ -152,7 +161,7 @@ export async function runLiquidationEngine(sprintId: string) {
 
     await supabase
       .from('verdicts')
-      .update({ stake_returned: true, amount_returned: stake?.amount * (verdict.sympathy_ratio ?? 0) })
+      .update({ stake_returned: true, amount_returned: returnAmount })
       .eq('id', verdict.id);
   }
 
