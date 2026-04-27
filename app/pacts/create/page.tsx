@@ -597,17 +597,17 @@ export default function CreatePactPage() {
                   label="Stake Amount per Member"
                   type="number"
                   min={100}
-                  prefix="₹"
+                  prefix="🪙"
                   placeholder="500"
                   error={errors.stakeAmount?.message}
                   {...register('stakeAmount', {
                     required: 'Stake amount is required',
-                    min: { value: 100, message: 'Minimum stake is ₹100' },
+                    min: { value: 100, message: 'Minimum stake is 100 p-coins' },
                   })}
                 />
                 {stakeAmount && parseFloat(stakeAmount) >= 100 && (
                   <p className="text-sm text-[#5C6B5E] mt-2">
-                    Each member pays <span className="font-semibold text-[#1B4332]">₹{parseFloat(stakeAmount).toLocaleString('en-IN')}</span> when accepting their invite.
+                    Each member stakes <span className="font-semibold text-[#1B4332]">🪙 {parseFloat(stakeAmount).toLocaleString('en-IN')} p-coins</span> when accepting their invite.
                   </p>
                 )}
               </div>
@@ -625,18 +625,6 @@ export default function CreatePactPage() {
                 </div>
               </div>
 
-              {/* No payment now note */}
-              <div className="bg-[#D8EDDA] border border-[#B4D9BB] rounded-[12px] p-4">
-                <div className="flex items-start gap-3">
-                  <span className="text-lg mt-0.5">🔒</span>
-                  <div>
-                    <p className="text-sm font-semibold text-[#1B4332] mb-1">No Payment Right Now</p>
-                    <p className="text-sm text-[#2D6A4F]">
-                      Stake payment happens when each member accepts their invitation. You don&apos;t pay anything now.
-                    </p>
-                  </div>
-                </div>
-              </div>
             </Card>
           )}
 
@@ -685,7 +673,7 @@ export default function CreatePactPage() {
                   </div>
                   <div className="bg-[#F5F7F0] rounded-[12px] p-4">
                     <p className="text-[11px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Stake / Member</p>
-                    <p className="text-sm font-semibold text-[#1B4332]">₹{parseFloat(stakeAmount || '0').toLocaleString('en-IN')}</p>
+                    <p className="text-sm font-semibold text-[#1B4332]">🪙 {parseFloat(stakeAmount || '0').toLocaleString('en-IN')} p-coins</p>
                   </div>
                 </div>
 
