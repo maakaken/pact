@@ -103,6 +103,7 @@ export default function CreatePactPage() {
   const [emailInput, setEmailInput] = useState('');
   const [emailError, setEmailError] = useState('');
   const [submitting, setSubmitting] = useState(false);
+  const [coinBalance, setCoinBalance] = useState<number>(0);
 
   const {
     register,
@@ -137,6 +138,22 @@ export default function CreatePactPage() {
   // Auth guard — runs after first render, never blocks initial paint
   useEffect(() => {
     // Auth guard removed - server-side auth handles it
+    // Fetch user's coin balance
+    const fetchBalance = async () => {
+      const supabase = createClient();
+      const { data: { user } } = await supabase.auth.getUser();
+      if (user) {
+        const { data: profile } = await supabase
+          .from('profiles')
+          .select('coin_balance')
+          .eq('id', user.id)
+          .single();
+        if (profile) {
+          setCoinBalance(profile.coin_balance ?? 0);
+        }
+      }
+    };
+    fetchBalance();
   }, [router]);
 
   // ── Email helpers ──────────────────────────────────────────────────────────
@@ -163,6 +180,13 @@ export default function CreatePactPage() {
     }
     if (step === 3) {
       valid = await trigger(['stakeAmount']);
+      if (valid) {
+        const stake = parseFloat(getValues('stakeAmount'));
+        if (stake > coinBalance) {
+          toast.error(`Insufficient p-coins. You have 🪙 ${coinBalance.toLocaleString('en-IN')} p-coins, but need 🪙 ${stake.toLocaleString('en-IN')} p-coins.`);
+          valid = false;
+        }
+      }
     }
     if (valid) setStep((s) => Math.min(s + 1, 4));
   };

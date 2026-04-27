@@ -9,6 +9,7 @@ export interface Profile {
   integrity_score: number;
   total_earned: number;
   total_lost: number;
+  coin_balance: number;
   sprints_completed: number;
   sprints_failed: number;
   discord_username: string | null;
