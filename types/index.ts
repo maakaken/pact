@@ -96,6 +96,7 @@ export interface Sprint {
   ends_at: string;
   verdict_ends_at: string;
   status: 'active' | 'verdict_phase' | 'completed';
+  voting_opened?: boolean;
 }
 
 export interface Stake {

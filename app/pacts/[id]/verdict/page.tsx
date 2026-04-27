@@ -102,6 +102,8 @@ export default function VerdictPage() {
   const [editingFor, setEditingFor] = useState<Record<string, boolean>>({});
   const [submittingFor, setSubmittingFor] = useState<Record<string, boolean>>({});
   const [dataLoading, setDataLoading] = useState(true);
+  const [forceEndingVoting, setForceEndingVoting] = useState(false);
+  const [votingOpened, setVotingOpened] = useState(false);
 
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
@@ -124,6 +126,7 @@ export default function VerdictPage() {
       const allVoteList = (json.votes as Vote[]) ?? [];
       console.log('[Verdict Page] Fetched votes:', allVoteList.length, 'votes');
       console.log('[Verdict Page] Current user ID:', user.id);
+      console.log('[Verdict Page] All votes:', allVoteList.map(v => ({ voter: v.voter_id, target: v.target_user_id, decision: v.decision })));
       setSubmissions((json.submissions as SubmissionWithProfile[]) ?? []);
       setAllVotes(allVoteList);
 
@@ -135,6 +138,9 @@ export default function VerdictPage() {
         }
       });
       setMyVotes(voteMap);
+
+      // Set voting opened state from sprint
+      setVotingOpened(pact.currentSprint.voting_opened ?? false);
     } catch (e) {
       console.error('Failed to fetch submissions:', e);
     } finally {
@@ -202,12 +208,62 @@ export default function VerdictPage() {
     }
   };
 
+  const handleForceEndVoting = async () => {
+    if (!pact?.currentSprint) return;
+    setForceEndingVoting(true);
+
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/force-end-voting`, {
+        method: 'POST',
+      });
+
+      if (res.ok) {
+        router.push(`/pacts/${pactId}`);
+      } else {
+        const json = await res.json();
+        console.error('Failed to force end voting:', json.error);
+        alert(json.error || 'Failed to force end voting');
+      }
+    } catch (e) {
+      console.error('Failed to force end voting:', e);
+      alert('Failed to force end voting');
+    } finally {
+      setForceEndingVoting(false);
+    }
+  };
+
+  const handleOpenVoting = async () => {
+    if (!pact?.currentSprint) return;
+
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/open-voting`, {
+        method: 'POST',
+      });
+
+      if (res.ok) {
+        setVotingOpened(true);
+      } else {
+        const json = await res.json();
+        console.error('Failed to open voting:', json.error);
+        alert(json.error || 'Failed to open voting');
+      }
+    } catch (e) {
+      console.error('Failed to open voting:', e);
+      alert('Failed to open voting');
+    }
+  };
+
   // Members to vote on = all members except self
   const otherMembers = pact?.members.filter((m) => m.user_id !== user?.id) ?? [];
 
   // Get admin member
   const adminMember = pact?.members.find((m) => m.role === 'admin');
   const isAdmin = user?.id === adminMember?.user_id;
+
+  console.log('[Verdict Page] Members:', pact?.members.map(m => ({ id: m.user_id, role: m.role })));
+  console.log('[Verdict Page] Other members to vote on:', otherMembers.map(m => ({ id: m.user_id, role: m.role })));
+  console.log('[Verdict Page] Admin member:', adminMember?.user_id);
+  console.log('[Verdict Page] Is admin:', isAdmin);
 
   // Check if admin has voted on each member
   const adminVotesForMember = (targetUserId: string) => {
@@ -216,6 +272,9 @@ export default function VerdictPage() {
     console.log('[Verdict Page] Admin vote check for target', targetUserId, ':', hasVoted, 'Admin ID:', adminMember.user_id);
     return hasVoted;
   };
+
+  // Check if admin has voted on all members
+  const adminHasVotedOnAll = otherMembers.length > 0 && otherMembers.every(m => adminVotesForMember(m.user_id));
 
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
   const sprint = pact?.currentSprint ?? null;
@@ -242,6 +301,31 @@ export default function VerdictPage() {
               <div className="flex items-center gap-2 text-xs text-[#5C6B5E]">
                 <span>Voting closes in</span>
                 <CountdownTimer endDate={sprint.verdict_ends_at} size="sm" />
+              </div>
+            )}
+
+            {/* TEMP: Force End Voting Button */}
+            {isAdmin && (
+              <div className="mt-4 space-y-2">
+                <Button
+                  onClick={handleForceEndVoting}
+                  loading={forceEndingVoting}
+                  variant="secondary"
+                  size="sm"
+                  className="w-full"
+                >
+                  Force End Voting (TEMP)
+                </Button>
+                {adminHasVotedOnAll && !votingOpened && (
+                  <Button
+                    onClick={handleOpenVoting}
+                    variant="primary"
+                    size="sm"
+                    className="w-full"
+                  >
+                    Open Voting for Members
+                  </Button>
+                )}
               </div>
             )}
           </div>
@@ -422,19 +506,19 @@ export default function VerdictPage() {
                     ) : showVoteUI && (
                       <div className="space-y-3">
                         {/* Admin-first voting warning */}
-                        {!isAdmin && !adminHasVoted && (
+                        {!isAdmin && !votingOpened && (
                           <div className="bg-[#FEF3E2] border border-[#F4C678] rounded-[10px] px-3 py-2">
                             <p className="text-[11px] text-[#B5540A] font-medium">
-                              Admin must vote first. Waiting for {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'admin'} to cast their vote.
+                              Admin must vote first. Waiting for {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'admin'} to cast their vote and open voting.
                             </p>
                           </div>
                         )}
 
                         {/* Voting opened notification */}
-                        {!isAdmin && adminHasVoted && (
+                        {!isAdmin && votingOpened && (
                           <div className="bg-[#D8EDDA] border border-[#74C69D] rounded-[10px] px-3 py-2">
                             <p className="text-[11px] text-[#1B4332] font-medium">
-                              ✅ Voting is now open! {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'Admin'} has cast their vote.
+                              ✅ Voting is now open! {adminMember?.profiles?.full_name ?? adminMember?.profiles?.username ?? 'Admin'} has opened voting.
                             </p>
                           </div>
                         )}
@@ -447,7 +531,7 @@ export default function VerdictPage() {
                               decision={d}
                               selected={selectedPending === d}
                               onSelect={() => handleSelectVote(member.user_id, d)}
-                              disabled={isSubmitting || (!isAdmin && !adminHasVoted)}
+                              disabled={isSubmitting || (!isAdmin && !votingOpened)}
                             />
                           ))}
                         </div>
@@ -462,7 +546,7 @@ export default function VerdictPage() {
                         <Button
                           onClick={() => handleSubmitVote(member.user_id, sub?.id ?? null)}
                           loading={isSubmitting}
-                          disabled={!selectedPending || (!isAdmin && !adminHasVoted)}
+                          disabled={!selectedPending || (!isAdmin && !votingOpened)}
                           size="sm"
                           className="w-full"
                         >
