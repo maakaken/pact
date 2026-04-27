@@ -98,6 +98,7 @@ export default function PactOverviewPage() {
   const [reopeningSprint, setReopeningSprint] = useState(false);
   const [resultsLoading, setResultsLoading] = useState(false);
   const [verdicts, setVerdicts] = useState<any[]>([]);
+  const [exitingPact, setExitingPact] = useState(false);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -428,6 +429,28 @@ export default function PactOverviewPage() {
     }
   };
 
+  const handleExitPact = async () => {
+    if (!confirm('Are you sure you want to exit this pact?')) return;
+    setExitingPact(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/exit`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        alert('You have exited the pact');
+        await fetchExtra();
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Failed to exit pact');
+      }
+    } catch (e) {
+      console.error('Failed to exit pact:', e);
+      alert('Failed to exit pact');
+    } finally {
+      setExitingPact(false);
+    }
+  };
+
   useEffect(() => {
     if (tab === 'moderation') {
       fetchPendingGoals();
@@ -483,6 +506,17 @@ export default function PactOverviewPage() {
                       </Badge>
                     )}
                   </div>
+                  {/* Exit button - shown when user is member and exit is allowed */}
+                  {pact && currentUser && pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && (
+                    <Button
+                      onClick={handleExitPact}
+                      loading={exitingPact}
+                      variant="secondary"
+                      size="sm"
+                    >
+                      Exit Pact
+                    </Button>
+                  )}
                 </div>
                 <h1 className="text-2xl md:text-3xl font-bold text-[#1B1F1A] mb-2" style={{ fontFamily: 'var(--font-display)' }}>
                   {pact?.name ?? ''}

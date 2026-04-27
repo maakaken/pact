@@ -139,10 +139,10 @@ export async function POST(
 
     // Lock coins for each member
     for (const member of members) {
-      // Get member's coin balance
+      // Get member's coin balance (available + reserved)
       const { data: profile } = await serviceClient
         .from('profiles')
-        .select('coin_balance')
+        .select('coin_balance, reserved_coins')
         .eq('id', member.user_id)
         .single()
 
@@ -151,8 +151,12 @@ export async function POST(
         continue
       }
 
+      const coinBalance = profile.coin_balance ?? 0
+      const reservedCoins = profile.reserved_coins ?? 0
+      const totalAvailable = coinBalance + reservedCoins
+
       // Check if member has sufficient balance
-      if (profile.coin_balance < pact.stake_amount) {
+      if (totalAvailable < pact.stake_amount) {
         console.error('[Start Sprint API] Insufficient balance for member:', member.user_id)
         return NextResponse.json(
           { error: `Member ${member.user_id} has insufficient p-coins balance` },
@@ -160,10 +164,22 @@ export async function POST(
         )
       }
 
-      // Deduct coins from member balance
+      // Deduct coins: first from reserved_coins, then from coin_balance
+      let newReservedCoins = reservedCoins
+      let newCoinBalance = coinBalance
+      const stakeAmount = pact.stake_amount
+
+      if (reservedCoins >= stakeAmount) {
+        newReservedCoins = reservedCoins - stakeAmount
+      } else {
+        const remainingFromBalance = stakeAmount - reservedCoins
+        newReservedCoins = 0
+        newCoinBalance = coinBalance - remainingFromBalance
+      }
+
       const { error: balanceError } = await serviceClient
         .from('profiles')
-        .update({ coin_balance: profile.coin_balance - pact.stake_amount })
+        .update({ coin_balance: newCoinBalance, reserved_coins: newReservedCoins })
         .eq('id', member.user_id)
 
       if (balanceError) {
@@ -190,7 +206,7 @@ export async function POST(
         // Rollback coin deduction
         await serviceClient
           .from('profiles')
-          .update({ coin_balance: profile.coin_balance })
+          .update({ coin_balance: coinBalance, reserved_coins: reservedCoins })
           .eq('id', member.user_id)
         return NextResponse.json(
           { error: 'Failed to create stake' },

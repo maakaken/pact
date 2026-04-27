@@ -162,7 +162,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
   // Create verdict_result notifications for all pact members
   const { data: sprint } = await supabase
     .from('sprints')
-    .select('pact_id')
+    .select('pact_id, sprint_number')
     .eq('id', sprintId)
     .single();
 
@@ -183,8 +183,133 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
       }));
 
       await supabase.from('notifications').insert(notifications);
+
+      // Create next_sprint_opt_in notifications
+      const optInNotifications = members.map((m) => ({
+        user_id: m.user_id,
+        type: 'next_sprint_opt_in' as const,
+        title: 'Next Sprint Starting Soon',
+        body: `Sprint ${sprint.sprint_number} is complete. Do you want to participate in the next sprint?`,
+        pact_id: sprint.pact_id,
+      }));
+
+      await supabase.from('notifications').insert(optInNotifications);
+    }
+
+    // Archive the sprint to save space
+    try {
+      await archiveSprint(sprint.pact_id, sprintId, sprint.sprint_number, supabase);
+    } catch (err) {
+      console.error('[Liquidation] Error archiving sprint:', err);
+      // Don't fail liquidation if archive fails
     }
   }
 
   return { failurePool, distributable, dividend, winnerCount };
+}
+
+async function archiveSprint(pactId: string, sprintId: string, sprintNumber: number, supabase: SupabaseClient) {
+  // Fetch pact details
+  const { data: pact } = await supabase
+    .from('pacts')
+    .select('stake_amount')
+    .eq('id', pactId)
+    .single();
+
+  if (!pact) return;
+
+  // Fetch verdicts with profiles
+  const { data: verdicts } = await supabase
+    .from('verdicts')
+    .select('*, profiles(full_name)')
+    .eq('sprint_id', sprintId);
+
+  if (!verdicts) return;
+
+  // Fetch goals (just titles and ids)
+  const { data: goals } = await supabase
+    .from('goals')
+    .select('id, title')
+    .eq('sprint_number', sprintNumber)
+    .eq('pact_id', pactId);
+
+  // Calculate summary
+  const winners = verdicts
+    .filter(v => v.outcome === 'passed' || v.outcome === 'sympathy_pass')
+    .map(v => ({
+      user_id: v.user_id,
+      full_name: v.profiles?.full_name || 'Unknown',
+      outcome: v.outcome,
+      dividend: v.dividend_amount || 0,
+    }));
+
+  const losers = verdicts
+    .filter(v => v.outcome === 'failed')
+    .map(v => ({
+      user_id: v.user_id,
+      full_name: v.profiles?.full_name || 'Unknown',
+      outcome: v.outcome,
+      amount_lost: pact.stake_amount,
+    }));
+
+  const taskTitles = goals?.map(g => g.title) || [];
+
+  const totalPot = verdicts.length * pact.stake_amount;
+  const platformFee = totalPot * 0.05;
+  const distributedAmount = totalPot - platformFee;
+
+  // Create archive entry
+  await supabase
+    .from('sprint_archives')
+    .insert({
+      pact_id: pactId,
+      sprint_id: sprintId,
+      sprint_number: sprintNumber,
+      stake_amount: pact.stake_amount,
+      total_pot: totalPot,
+      platform_fee: platformFee,
+      distributed_amount: distributedAmount,
+      winner_count: winners.length,
+      summary: {
+        winners,
+        losers,
+        tasks: taskTitles,
+      },
+    });
+
+  // Delete detailed data
+  const goalIds = goals?.map(g => g.id) || [];
+  if (goalIds.length > 0) {
+    await supabase
+      .from('goal_votes')
+      .delete()
+      .in('goal_id', goalIds);
+  }
+
+  await supabase
+    .from('goals')
+    .delete()
+    .eq('sprint_number', sprintNumber)
+    .eq('pact_id', pactId);
+
+  await supabase
+    .from('submissions')
+    .delete()
+    .eq('sprint_id', sprintId);
+
+  await supabase
+    .from('votes')
+    .delete()
+    .eq('sprint_id', sprintId);
+
+  await supabase
+    .from('stakes')
+    .delete()
+    .eq('sprint_id', sprintId);
+
+  // Mark sprint as archived
+  await supabase
+    .from('sprints')
+    .update({ archived: true })
+    .eq('id', sprintId);
 }

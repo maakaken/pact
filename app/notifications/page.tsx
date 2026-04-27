@@ -27,6 +27,7 @@ const notifIcon: Record<Notification['type'], string> = {
   application_approved: '✅',
   application_rejected: '❌',
   proof_upload: '📸',
+  next_sprint_opt_in: '🔄',
 };
 
 const notifColor: Record<Notification['type'], string> = {
@@ -42,6 +43,7 @@ const notifColor: Record<Notification['type'], string> = {
   invite_received: '#2D6A4F',
   application_approved: '#2D6A4F',
   application_rejected: '#E07A5F',
+  next_sprint_opt_in: '#B5540A',
 };
 
 function groupByDate(notifications: Notification[]) {
@@ -71,6 +73,36 @@ export default function NotificationsPage() {
   // Auth guard removed - server-side auth handles it
 
   const groups = groupByDate(notifications);
+
+  const handleAcceptNextSprint = async (notifId: string) => {
+    try {
+      const res = await fetch(`/api/notifications/${notifId}/accept-next-sprint`, { method: 'POST' });
+      if (res.ok) {
+        markRead(notifId);
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Failed to accept next sprint');
+      }
+    } catch (e) {
+      console.error('Failed to accept next sprint:', e);
+      alert('Failed to accept next sprint');
+    }
+  };
+
+  const handleExitPact = async (notifId: string) => {
+    try {
+      const res = await fetch(`/api/notifications/${notifId}/exit-pact`, { method: 'POST' });
+      if (res.ok) {
+        markRead(notifId);
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Failed to exit pact');
+      }
+    } catch (e) {
+      console.error('Failed to exit pact:', e);
+      alert('Failed to exit pact');
+    }
+  };
 
   return (
     <div className="min-h-screen bg-[#F5F7F0]">
@@ -108,8 +140,8 @@ export default function NotificationsPage() {
                     {group.items.map((n) => (
                       <div
                         key={n.id}
-                        onClick={() => markRead(n.id)}
-                        className={`flex items-start gap-3 p-4 rounded-[16px] border transition-all cursor-pointer ${
+                        onClick={() => n.type !== 'next_sprint_opt_in' && markRead(n.id)}
+                        className={`flex items-start gap-3 p-4 rounded-[16px] border transition-all ${
                           !n.is_read
                             ? 'bg-[#EEF5EE] border-[#D8EDDA] shadow-[0_2px_8px_rgba(45,106,79,0.06)]'
                             : 'bg-white border-[#E0EBE1]'
@@ -134,6 +166,26 @@ export default function NotificationsPage() {
                               </Link>
                             )}
                           </div>
+                          {/* Action buttons for next_sprint_opt_in */}
+                          {n.type === 'next_sprint_opt_in' && !n.is_read && (
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                onClick={(e) => { e.stopPropagation(); handleAcceptNextSprint(n.id); }}
+                                size="sm"
+                                className="flex-1"
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                onClick={(e) => { e.stopPropagation(); handleExitPact(n.id); }}
+                                variant="secondary"
+                                size="sm"
+                                className="flex-1"
+                              >
+                                Exit
+                              </Button>
+                            </div>
+                          )}
                         </div>
                         {!n.is_read && (
                           <div className="w-2 h-2 rounded-full bg-[#2D6A4F] flex-shrink-0 mt-1" />

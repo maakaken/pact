@@ -90,10 +90,10 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check user's coin balance (validation only, no deduction)
+    // Check user's coin balance (available + reserved)
     const { data: profile } = await serviceClient
       .from('profiles')
-      .select('coin_balance')
+      .select('coin_balance, reserved_coins')
       .eq('id', user.id)
       .single()
 
@@ -106,11 +106,27 @@ export async function POST(request: Request) {
 
     const stakeAmount = pact.stake_amount
     const coinBalance = profile.coin_balance ?? 0
+    const reservedCoins = profile.reserved_coins ?? 0
+    const totalAvailable = coinBalance + reservedCoins
 
-    if (coinBalance < stakeAmount) {
+    if (totalAvailable < stakeAmount) {
       return NextResponse.json(
-        { error: `Insufficient p-coins. You have 🪙 ${coinBalance.toLocaleString('en-IN')} p-coins, but need 🪙 ${stakeAmount.toLocaleString('en-IN')} p-coins to join this pact.` },
+        { error: `Insufficient p-coins. You have 🪙 ${coinBalance.toLocaleString('en-IN')} available + 🪙 ${reservedCoins.toLocaleString('en-IN')} reserved, but need 🪙 ${stakeAmount.toLocaleString('en-IN')} p-coins to join this pact.` },
         { status: 400 }
+      )
+    }
+
+    // Reserve coins for this pact
+    const { error: reserveError } = await serviceClient
+      .from('profiles')
+      .update({ reserved_coins: reservedCoins + stakeAmount })
+      .eq('id', user.id)
+
+    if (reserveError) {
+      console.error('[Marketplace Apply] Error reserving coins:', reserveError)
+      return NextResponse.json(
+        { error: 'Failed to reserve coins' },
+        { status: 500 }
       )
     }
 

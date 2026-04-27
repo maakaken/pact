@@ -209,9 +209,9 @@ export default function MyProfilePage() {
             <div className="grid grid-cols-4 gap-3 mt-5 pt-4 border-t border-[#E0EBE1]">
               {[
                 { label: 'Success Rate', value: `${successRate}%`, color: '#2D6A4F' },
-                { label: 'Coin Balance', value: `🪙 ${(profile?.coin_balance ?? 0).toLocaleString('en-IN')}`, color: '#2D6A4F' },
+                { label: 'Available', value: `🪙 ${(profile?.coin_balance ?? 0).toLocaleString('en-IN')}`, color: '#2D6A4F' },
+                { label: 'Reserved', value: `🪙 ${(profile?.reserved_coins ?? 0).toLocaleString('en-IN')}`, color: '#B5540A' },
                 { label: 'Sprints', value: (profile?.sprints_completed ?? 0).toString(), color: '#1B4332' },
-                { label: 'Failed', value: (profile?.sprints_failed ?? 0).toString(), color: '#E07A5F' },
               ].map(({ label, value, color }) => (
                 <div key={label} className="text-center">
                   <p className="font-[family-name:var(--font-display)] font-bold text-lg" style={{ color }}>{value}</p>

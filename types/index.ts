@@ -10,6 +10,7 @@ export interface Profile {
   total_earned: number;
   total_lost: number;
   coin_balance: number;
+  reserved_coins: number;
   sprints_completed: number;
   sprints_failed: number;
   discord_username: string | null;
@@ -170,7 +171,7 @@ export interface Notification {
   type: 'goal_approval_needed' | 'sprint_starting' | 'proof_due' | 'verdict_open' |
         'verdict_result' | 'appeal_result' | 'nudge' | 'inactivity_warning' |
         'invite_received' | 'application_approved' | 'application_rejected' |
-        'proof_upload';
+        'proof_upload' | 'next_sprint_opt_in';
   title: string;
   body: string | null;
   data: string | null;
@@ -209,4 +210,32 @@ export interface SubmissionWithProfile extends Submission {
 
 export interface VerdictWithProfile extends Verdict {
   profiles: Profile;
+}
+
+export interface SprintArchive {
+  id: string;
+  pact_id: string;
+  sprint_id: string;
+  sprint_number: number;
+  stake_amount: number;
+  total_pot: number;
+  platform_fee: number;
+  distributed_amount: number;
+  winner_count: number;
+  summary: {
+    winners: Array<{
+      user_id: string;
+      full_name: string;
+      outcome: 'passed' | 'sympathy_pass';
+      dividend: number;
+    }>;
+    losers: Array<{
+      user_id: string;
+      full_name: string;
+      outcome: 'failed';
+      amount_lost: number;
+    }>;
+    tasks: string[]; // Goal titles only
+  };
+  created_at: string;
 }
