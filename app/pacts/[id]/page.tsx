@@ -75,7 +75,7 @@ export default function PactOverviewPage() {
   const pactId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
-  const { pact, loading: pactLoading, error: pactError } = usePact(pactId);
+  const { pact, pactLoading, loading, error, refetch: refetchPact } = usePact(pactId);
 
   const [tab, setTab] = useState<TabKey>('members');
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -319,8 +319,8 @@ export default function PactOverviewPage() {
         method: 'POST',
       });
       if (res.ok) {
-        // Refresh the page to show updated state
-        router.refresh();
+        // Refetch pact data to show updated state
+        await refetchPact();
       } else {
         const json = await res.json();
         console.error('Failed to force complete sprint:', json.error);
@@ -341,8 +341,8 @@ export default function PactOverviewPage() {
         method: 'POST',
       });
       if (res.ok) {
-        // Refresh the page to show updated state
-        router.refresh();
+        // Refetch pact data to show updated state
+        await refetchPact();
       } else {
         const json = await res.json();
         console.error('Failed to reopen sprint:', json.error);
@@ -357,7 +357,7 @@ export default function PactOverviewPage() {
   };
 
   // Show "not found" only after loading finishes and pact is still null
-  if (!pactLoading && (pactError || !pact)) {
+  if (!pactLoading && (error || !pact)) {
     return (
       <div className="min-h-screen bg-[#F5F7F0] flex items-center justify-center">
         <div className="text-center">

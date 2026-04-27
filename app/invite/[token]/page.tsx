@@ -2,9 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { useParams, useRouter } from 'next/navigation';
-import { Users, Calendar, DollarSign, AlertCircle, CheckCircle2, Clock } from 'lucide-react';
-import { loadStripe } from '@stripe/stripe-js';
-import { Elements, PaymentElement, useStripe, useElements } from '@stripe/react-stripe-js';
+import { Users, Calendar, DollarSign, AlertCircle, CheckCircle2, Clock, Coins } from 'lucide-react';
 import { createClient } from '@/lib/supabase/client';
 import { useUser } from '@/hooks/useUser';
 import Card from '@/components/ui/Card';
@@ -14,60 +12,12 @@ import Avatar from '@/components/ui/Avatar';
 import { formatCurrency } from '@/lib/utils';
 import type { Invitation, Pact, Profile, PactMember } from '@/types';
 
-const stripePromise = loadStripe(process.env.NEXT_PUBLIC_STRIPE_PUBLISHABLE_KEY!);
-
 interface InviteData {
   invitation: Invitation;
   pact: Pact;
   inviter: Profile;
   members: (PactMember & { profiles: Profile })[];
-}
-
-function PaymentForm({ clientSecret, onSuccess }: { clientSecret: string; onSuccess: () => void }) {
-  const stripe = useStripe();
-  const elements = useElements();
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState('');
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!stripe || !elements) return;
-    setLoading(true);
-    setError('');
-
-    const { error: stripeError, paymentIntent } = await stripe.confirmPayment({
-      elements,
-      redirect: 'if_required',
-    });
-
-    if (stripeError) {
-      setError(stripeError.message ?? 'Payment failed');
-      setLoading(false);
-      return;
-    }
-
-    if (paymentIntent?.status === 'succeeded') {
-      onSuccess();
-    }
-    setLoading(false);
-  };
-
-  return (
-    <form onSubmit={handleSubmit} className="space-y-4">
-      <PaymentElement />
-      {error && (
-        <div className="bg-[#FDF0EC] border border-[#F0C4B8] rounded-[10px] p-3">
-          <p className="text-xs text-[#E07A5F]">{error}</p>
-        </div>
-      )}
-      <Button type="submit" loading={loading} className="w-full">
-        Confirm Payment
-      </Button>
-      <p className="text-xs text-center text-[#8FA38F]">
-        🔒 Payments are processed securely via Stripe. Test card: 4242 4242 4242 4242
-      </p>
-    </form>
-  );
+  userCoinBalance?: number;
 }
 
 export default function InvitePage() {
@@ -80,10 +30,10 @@ export default function InvitePage() {
   const [invalid, setInvalid] = useState(false);
   const [alreadyMember, setAlreadyMember] = useState(false);
 
-  const [step, setStep] = useState<'details' | 'payment' | 'success' | 'declined'>('details');
-  const [clientSecret, setClientSecret] = useState('');
-  const [creatingIntent, setCreatingIntent] = useState(false);
+  const [step, setStep] = useState<'details' | 'success' | 'declined'>('details');
+  const [accepting, setAccepting] = useState(false);
   const [declining, setDeclining] = useState(false);
+  const [insufficientBalance, setInsufficientBalance] = useState(false);
 
   const load = useCallback(async () => {
     const supabase = createClient();
@@ -107,11 +57,19 @@ export default function InvitePage() {
       .eq('pact_id', pact.id)
       .eq('status', 'active');
 
+    // Get user's coin balance if authenticated
+    let userCoinBalance = 0;
+    if (user) {
+      const { data: profile } = await supabase.from('profiles').select('coin_balance').eq('id', user.id).single();
+      userCoinBalance = profile?.coin_balance ?? 0;
+    }
+
     setInviteData({
       invitation,
       pact,
       inviter: inviter!,
       members: (members as (PactMember & { profiles: Profile })[]) ?? [],
+      userCoinBalance,
     });
     setLoading(false);
   }, [token]);
@@ -130,56 +88,42 @@ export default function InvitePage() {
   const handleAccept = async () => {
     if (!user) { router.push(`/login?next=/invite/${token}`); return; }
     if (!inviteData) return;
-    setCreatingIntent(true);
 
-    const res = await fetch('/api/stripe/create-intent', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        pact_id: inviteData.pact.id,
-        user_id: user.id,
-        amount: inviteData.pact.stake_amount,
-      }),
-    });
-    const data = await res.json();
-    if (data.clientSecret) {
-      setClientSecret(data.clientSecret);
-      setStep('payment');
-    }
-    setCreatingIntent(false);
-  };
-
-  const handlePaymentSuccess = async () => {
-    if (!user || !inviteData) return;
-    const supabase = createClient();
-
-    // Mark invitation as accepted
-    await supabase
-      .from('invitations')
-      .update({ status: 'accepted' })
-      .eq('id', inviteData.invitation.id);
-
-    // Safety net: add to pact_members client-side in case the Stripe webhook
-    // is delayed or the webhook secret is not configured in Vercel.
-    // Uses upsert so it is idempotent if the webhook already ran.
-    const { error: memberError } = await supabase
-      .from('pact_members')
-      .upsert({
-        pact_id: inviteData.pact.id,
-        user_id: user.id,
-        role: 'member',
-        status: 'active',
-      }, { onConflict: 'pact_id,user_id' });
-
-    if (memberError) {
-      console.error('[invite] Failed to add to pact_members:', memberError);
+    // Check coin balance
+    if (inviteData.userCoinBalance !== undefined && inviteData.userCoinBalance < inviteData.pact.stake_amount) {
+      setInsufficientBalance(true);
+      return;
     }
 
-    setStep('success');
-    setTimeout(() => {
-      router.push(`/pacts/${inviteData.pact.id}/vetting`);
-    }, 2000);
+    setAccepting(true);
+
+    try {
+      const res = await fetch('/api/pacts/join-with-coins', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pact_id: inviteData.pact.id,
+          invitation_id: inviteData.invitation.id,
+        }),
+      });
+
+      const data = await res.json();
+      if (res.ok) {
+        setStep('success');
+        setTimeout(() => {
+          router.push(`/pacts/${inviteData.pact.id}/vetting`);
+        }, 2000);
+      } else {
+        alert(data.error || 'Failed to join pact');
+      }
+    } catch (e) {
+      console.error('Failed to join pact:', e);
+      alert('Failed to join pact');
+    } finally {
+      setAccepting(false);
+    }
   };
+
 
   const handleDecline = async () => {
     if (!inviteData) return;
@@ -221,7 +165,7 @@ export default function InvitePage() {
             <CheckCircle2 size={24} className="text-[#2D6A4F]" />
           </div>
           <h2 className="font-[family-name:var(--font-display)] text-xl font-bold mb-2">Welcome to the Pact!</h2>
-          <p className="text-sm text-[#5C6B5E]">Payment confirmed. Redirecting to vetting phase...</p>
+          <p className="text-sm text-[#5C6B5E]">Stake locked. Redirecting to vetting phase...</p>
         </Card>
       </div>
     );
@@ -315,32 +259,33 @@ export default function InvitePage() {
               </div>
             ) : (
               <div className="space-y-4">
+                {insufficientBalance && (
+                  <div className="bg-[#FDF0EC] border border-[#F0C4B8] rounded-[10px] p-3">
+                    <p className="text-xs text-[#E07A5F]">Insufficient p-coins balance. You need {formatCurrency(pact.stake_amount)} but have {formatCurrency(inviteData?.userCoinBalance ?? 0)}.</p>
+                  </div>
+                )}
                 <div className="bg-[#D8EDDA] rounded-[12px] p-3 text-center">
-                  <p className="text-xs text-[#2D6A4F] mb-1">Stake to lock on acceptance</p>
+                  <p className="text-xs text-[#2D6A4F] mb-1">Your p-coins balance</p>
+                  <p className="font-[family-name:var(--font-display)] font-bold text-[#1B4332] text-2xl">{formatCurrency(inviteData?.userCoinBalance ?? 0)}</p>
+                </div>
+                <div className="bg-[#F5F7F0] rounded-[12px] p-3 text-center">
+                  <p className="text-xs text-[#5C6B5E] mb-1">Stake required</p>
                   <p className="font-[family-name:var(--font-display)] font-bold text-[#1B4332] text-2xl">{formatCurrency(pact.stake_amount)}</p>
                 </div>
-                <Button onClick={handleAccept} loading={creatingIntent} className="w-full">
-                  Accept & Pay {formatCurrency(pact.stake_amount)}
+                <Button onClick={handleAccept} loading={accepting} className="w-full">
+                  Accept & Stake {formatCurrency(pact.stake_amount)}
                 </Button>
                 <Button onClick={handleDecline} loading={declining} variant="danger" className="w-full">
                   Decline Invitation
                 </Button>
                 <p className="text-xs text-center text-[#8FA38F]">
-                  By accepting, your stake will be locked in escrow for the duration of the sprint.
+                  By accepting, your p-coins will be locked in escrow for the duration of the sprint.
                 </p>
               </div>
             )}
           </Card>
         )}
 
-        {step === 'payment' && clientSecret && (
-          <Card>
-            <h2 className="font-semibold text-[#1B1F1A] mb-4">Payment Details</h2>
-            <Elements stripe={stripePromise} options={{ clientSecret }}>
-              <PaymentForm clientSecret={clientSecret} onSuccess={handlePaymentSuccess} />
-            </Elements>
-          </Card>
-        )}
 
       </div>
     </div>

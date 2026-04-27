@@ -41,7 +41,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
   const winnerCount = passedVerdicts.length;
   const dividend = winnerCount > 0 ? distributable / winnerCount : 0;
 
-  // Process passed members
+  // Process passed members - return stake + dividend to coin_balance
   for (const verdict of passedVerdicts) {
     const stake = stakeMap[verdict.user_id];
     if (stake) {
@@ -51,20 +51,9 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
         .eq('id', stake.id);
     }
 
-    await supabase
-      .from('profiles')
-      .update({
-        total_earned: supabase.rpc('increment_total_earned', {
-          user_id: verdict.user_id,
-          amount: (stake?.amount ?? 0) + dividend,
-        }),
-      })
-      .eq('id', verdict.user_id);
-
-    // Direct update instead of RPC for simplicity
     const { data: profile } = await supabase
       .from('profiles')
-      .select('total_earned, sprints_completed, integrity_score')
+      .select('coin_balance, sprints_completed, integrity_score')
       .eq('id', verdict.user_id)
       .single();
 
@@ -72,7 +61,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
       await supabase
         .from('profiles')
         .update({
-          total_earned: profile.total_earned + (stake?.amount ?? 0) + dividend,
+          coin_balance: profile.coin_balance + (stake?.amount ?? 0) + dividend,
           sprints_completed: profile.sprints_completed + 1,
           integrity_score: Math.min(100, profile.integrity_score + 2),
         })
@@ -85,7 +74,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
       .eq('id', verdict.id);
   }
 
-  // Process failed members
+  // Process failed members - stake is forfeited (already deducted when locked)
   for (const verdict of failedVerdicts) {
     const stake = stakeMap[verdict.user_id];
     if (stake) {
@@ -97,7 +86,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
 
     const { data: profile } = await supabase
       .from('profiles')
-      .select('total_lost, sprints_failed, integrity_score')
+      .select('sprints_failed, integrity_score')
       .eq('id', verdict.user_id)
       .single();
 
@@ -105,7 +94,6 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
       await supabase
         .from('profiles')
         .update({
-          total_lost: profile.total_lost + (stake?.amount ?? 0),
           sprints_failed: profile.sprints_failed + 1,
           integrity_score: Math.max(0, profile.integrity_score - 10),
         })
@@ -137,10 +125,10 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
         })
         .eq('id', stake.id);
 
-      // Update profile with returned amount
+      // Update profile coin_balance with returned amount
       const { data: profile } = await supabase
         .from('profiles')
-        .select('total_earned')
+        .select('coin_balance')
         .eq('id', verdict.user_id)
         .single();
 
@@ -148,7 +136,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
         await supabase
           .from('profiles')
           .update({
-            total_earned: profile.total_earned + returnAmount,
+            coin_balance: profile.coin_balance + returnAmount,
           })
           .eq('id', verdict.user_id);
       }

@@ -4,6 +4,12 @@ import { createServerClient } from '@/lib/supabase/server';
 
 // CRITICAL: Must use raw body for Stripe signature verification
 export async function POST(request: NextRequest) {
+  // DISABLED: Stripe webhooks replaced with p-coins system
+  return NextResponse.json(
+    { error: 'Stripe webhooks are disabled. Using p-coins system instead.' },
+    { status: 503 }
+  );
+
   const rawBody = await request.text();
   const sig = request.headers.get('stripe-signature');
   const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET!;
@@ -14,7 +20,7 @@ export async function POST(request: NextRequest) {
 
   let event;
   try {
-    event = stripe.webhooks.constructEvent(rawBody, sig, webhookSecret);
+    event = stripe.webhooks.constructEvent(rawBody, sig as string, webhookSecret);
   } catch (err) {
     console.error('Webhook signature verification failed:', err);
     return NextResponse.json({ error: 'Invalid signature' }, { status: 400 });
@@ -57,8 +63,9 @@ export async function POST(request: NextRequest) {
 
     // BUG FIX: was .or(email.eq.${user_id}) which compared email to a UUID — never matched.
     // Now: look up the user actual email via auth admin, then match the invitation correctly.
-    const { data: { user: authUser } } = await supabase.auth.admin.getUserById(user_id);
-    if (authUser?.email) {
+    const { data: authData } = await supabase.auth.admin.getUserById(user_id);
+    const authUser = authData?.user!;
+    if (authUser && authUser.email) {
       await supabase
         .from('invitations')
         .update({ status: 'accepted' })
@@ -73,22 +80,24 @@ export async function POST(request: NextRequest) {
       .select('user_id')
       .eq('pact_id', pact_id)
       .eq('role', 'admin')
-      .single();
+      .maybeSingle();
 
     if (admin) {
       const { data: newMember } = await supabase
         .from('profiles')
         .select('full_name, username')
         .eq('id', user_id)
-        .single();
+        .maybeSingle();
 
-      await supabase.from('notifications').insert({
-        user_id: admin.user_id,
-        type: 'application_approved',
-        title: 'New member joined your Pact',
-        body: `${newMember?.full_name ?? newMember?.username ?? 'Someone'} has paid their stake and joined the pact.`,
-        pact_id,
-      });
+      if (newMember) {
+        await supabase.from('notifications').insert({
+          user_id: admin!.user_id,
+          type: 'application_approved',
+          title: 'New member joined your Pact',
+          body: `${newMember!.full_name ?? newMember!.username ?? 'Someone'} has paid their stake and joined the pact.`,
+          pact_id,
+        });
+      }
     }
   }
 

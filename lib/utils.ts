@@ -1,7 +1,7 @@
 import { formatDistanceToNow, format, differenceInSeconds } from 'date-fns';
 
 export function formatCurrency(amount: number): string {
-  return `₹${amount.toLocaleString('en-IN')}`;
+  return `${amount.toLocaleString('en-IN')} p-coins`;
 }
 
 export function formatTimeAgo(date: string): string {

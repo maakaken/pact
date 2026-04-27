@@ -256,6 +256,12 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
           console.log('[Transition Response] Status:', res.status, 'Body:', json);
           if (!res.ok) {
             console.error('[Transition Error]', json);
+            // If pact is already active, just redirect to the pact page
+            if (json.error === 'Pact must be in vetting state to complete vetting') {
+              console.log('[Transition] Pact already transitioned, redirecting...');
+              router.push(`/pacts/${pactId}`);
+              return;
+            }
             setTransitionError(json.error || `Failed to transition to active phase (status ${res.status})`);
           } else {
             // Refresh the pact data to get the new status
@@ -271,7 +277,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
       };
       transitionToActive();
     }
-  }, [vettingComplete, pact?.status, pactId, transitioning, transitionError]);
+  }, [vettingComplete, pact?.status, pactId, transitioning, transitionError, router]);
 
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
 

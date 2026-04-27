@@ -178,11 +178,16 @@ export default function LobbyPage() {
                 </p>
               )}
             </div>
-            {avatarUrl && (
-              <Link href="/profile/me" className="hidden md:block flex-shrink-0">
-                <Avatar src={avatarUrl} name={firstName} size="md" />
+            <div className="flex items-center gap-3">
+              <Link href="/pacts/create" className="hidden md:inline-flex items-center justify-center bg-[#1B4332] text-white rounded-[12px] px-5 py-2.5 font-semibold text-sm hover:bg-[#2D6A4F] transition-colors">
+                Start a Pact
               </Link>
-            )}
+              {avatarUrl && (
+                <Link href="/profile/me" className="hidden md:block flex-shrink-0">
+                  <Avatar src={avatarUrl} name={firstName} size="md" />
+                </Link>
+              )}
+            </div>
           </header>
 
           {/* MY ACTIVE PACTS */}

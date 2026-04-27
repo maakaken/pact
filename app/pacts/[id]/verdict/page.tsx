@@ -93,7 +93,7 @@ export default function VerdictPage() {
   const pactId = typeof params.id === 'string' ? params.id : Array.isArray(params.id) ? params.id[0] : '';
   const router = useRouter();
   const { user, loading: userLoading } = useUser();
-  const { pact, loading: pactLoading } = usePact(pactId);
+  const { pact, loading: pactLoading, refetch: refetchPact } = usePact(pactId);
 
   const [submissions, setSubmissions] = useState<SubmissionWithProfile[]>([]);
   const [allVotes, setAllVotes] = useState<Vote[]>([]);
@@ -146,7 +146,7 @@ export default function VerdictPage() {
     } finally {
       setDataLoading(false);
     }
-  }, [user, pact, pactId]);
+  }, [user, pact?.currentSprint, pactId]);
 
   useEffect(() => {
     fetchData();
@@ -218,7 +218,8 @@ export default function VerdictPage() {
       });
 
       if (res.ok) {
-        router.push(`/pacts/${pactId}`);
+        // Refetch pact data to show updated state
+        await refetchPact();
       } else {
         const json = await res.json();
         console.error('Failed to force end voting:', json.error);
@@ -241,7 +242,8 @@ export default function VerdictPage() {
       });
 
       if (res.ok) {
-        setVotingOpened(true);
+        // Refetch pact data to show updated state
+        await refetchPact();
       } else {
         const json = await res.json();
         console.error('Failed to open voting:', json.error);

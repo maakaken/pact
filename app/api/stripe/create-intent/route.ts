@@ -3,6 +3,12 @@ import { stripe } from '@/lib/stripe';
 import { createServerClient } from '@/lib/supabase/server';
 
 export async function POST(request: NextRequest) {
+  // DISABLED: Stripe payments replaced with p-coins system
+  return NextResponse.json(
+    { error: 'Stripe payments are disabled. Using p-coins system instead.' },
+    { status: 503 }
+  );
+
   try {
     const { pact_id, user_id, amount } = await request.json();
 
@@ -39,9 +45,9 @@ export async function POST(request: NextRequest) {
         pact_id,
         user_id,
         sprint_id: sprint?.id ?? '',
-        pact_name: pact.name,
+        pact_name: pact?.name ?? '',
       },
-      description: `Pact stake: ${pact.name}`,
+      description: `Pact stake: ${pact?.name ?? 'Unknown'}`,
     });
 
     return NextResponse.json({ clientSecret: paymentIntent.client_secret });

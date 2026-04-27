@@ -123,6 +123,102 @@ export async function POST(
       )
     }
 
+    // Get all active members
+    const { data: members } = await serviceClient
+      .from('pact_members')
+      .select('*')
+      .eq('pact_id', pactId)
+      .eq('status', 'active')
+
+    if (!members || members.length === 0) {
+      return NextResponse.json(
+        { error: 'No active members found' },
+        { status: 400 }
+      )
+    }
+
+    // Lock coins for each member
+    for (const member of members) {
+      // Get member's coin balance
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('coin_balance')
+        .eq('id', member.user_id)
+        .single()
+
+      if (!profile) {
+        console.error('[Start Sprint API] Profile not found for member:', member.user_id)
+        continue
+      }
+
+      // Check if member has sufficient balance
+      if (profile.coin_balance < pact.stake_amount) {
+        console.error('[Start Sprint API] Insufficient balance for member:', member.user_id)
+        return NextResponse.json(
+          { error: `Member ${member.user_id} has insufficient p-coins balance` },
+          { status: 400 }
+        )
+      }
+
+      // Deduct coins from member balance
+      const { error: balanceError } = await serviceClient
+        .from('profiles')
+        .update({ coin_balance: profile.coin_balance - pact.stake_amount })
+        .eq('id', member.user_id)
+
+      if (balanceError) {
+        console.error('[Start Sprint API] Error deducting coins:', balanceError)
+        return NextResponse.json(
+          { error: 'Failed to deduct coins' },
+          { status: 500 }
+        )
+      }
+
+      // Create stake record
+      const { error: stakeError } = await serviceClient
+        .from('stakes')
+        .insert({
+          pact_id: pactId,
+          sprint_id: null, // Will be updated after sprint is created
+          user_id: member.user_id,
+          amount: pact.stake_amount,
+          status: 'locked',
+        })
+
+      if (stakeError) {
+        console.error('[Start Sprint API] Error creating stake:', stakeError)
+        // Rollback coin deduction
+        await serviceClient
+          .from('profiles')
+          .update({ coin_balance: profile.coin_balance })
+          .eq('id', member.user_id)
+        return NextResponse.json(
+          { error: 'Failed to create stake' },
+          { status: 500 }
+        )
+      }
+    }
+
+    // Update stakes with sprint_id
+    const { data: sprintData } = await serviceClient
+      .from('sprints')
+      .select('id')
+      .eq('pact_id', pactId)
+      .eq('sprint_number', 1)
+      .single()
+
+    if (sprintData) {
+      const { error: stakeUpdateError } = await serviceClient
+        .from('stakes')
+        .update({ sprint_id: sprintData.id })
+        .eq('pact_id', pactId)
+        .is('sprint_id', null)
+
+      if (stakeUpdateError) {
+        console.error('[Start Sprint API] Error updating stakes:', stakeUpdateError)
+      }
+    }
+
     // Update pact status to vetting
     const { error: pactUpdateError } = await serviceClient
       .from('pacts')

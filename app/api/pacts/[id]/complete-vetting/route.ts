@@ -99,24 +99,23 @@ export async function POST(
     }
 
     // Verify vetting is actually complete
-    const { data: goals } = await serviceClient
+    const { data: goals, error: goalsError } = await serviceClient
       .from('goals')
       .select('*')
       .eq('pact_id', pactId)
       .eq('sprint_number', pact.current_sprint)
 
-    if (!goals || goals.length === 0) {
+    if (goalsError) {
+      console.error('[Complete Vetting] Error fetching goals:', goalsError)
       return NextResponse.json(
-        { error: 'No goals found for current sprint' },
-        { status: 400 }
+        { error: 'Failed to fetch goals', details: goalsError.message },
+        { status: 500 }
       )
     }
 
-    // Check all goals are cleared by moderation
-    const allCleared = goals.every((g: any) => g.moderation_status === 'cleared')
-    if (!allCleared) {
+    if (!goals || goals.length === 0) {
       return NextResponse.json(
-        { error: 'Not all goals have been cleared by moderation' },
+        { error: 'No goals found for current sprint' },
         { status: 400 }
       )
     }
@@ -129,12 +128,24 @@ export async function POST(
       moderation_status: g.moderation_status
     })))
 
+    // Check all goals are cleared by moderation
+    const allCleared = goals.every((g: any) => g.moderation_status === 'cleared')
+    if (!allCleared) {
+      const notCleared = goals.filter((g: any) => g.moderation_status !== 'cleared')
+      console.log('[Complete Vetting] Not all goals cleared. Not cleared goals:', notCleared.map(g => ({ id: g.id, moderation_status: g.moderation_status })))
+      return NextResponse.json(
+        { error: 'Not all goals have been cleared by moderation', notCleared: notCleared.map(g => g.id) },
+        { status: 400 }
+      )
+    }
+
     // Check all goals are approved (status === 'approved')
     const allApproved = goals.every((g: any) => g.status === 'approved')
     if (!allApproved) {
-      console.log('[Complete Vetting] Not all goals approved. Goal statuses:', goals.map(g => ({ id: g.id, status: g.status })))
+      const notApproved = goals.filter((g: any) => g.status !== 'approved')
+      console.log('[Complete Vetting] Not all goals approved. Not approved goals:', notApproved.map(g => ({ id: g.id, status: g.status })))
       return NextResponse.json(
-        { error: 'Not all goals have been approved' },
+        { error: 'Not all goals have been approved', notApproved: notApproved.map(g => g.id) },
         { status: 400 }
       )
     }
