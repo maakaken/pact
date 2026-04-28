@@ -1,6 +1,6 @@
 -- Create sprint_archives table for storing compressed sprint history
 CREATE TABLE IF NOT EXISTS sprint_archives (
-  id UUID PRIMARY KEY DEFAULT uuid_generate_v4(),
+  id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
   pact_id UUID NOT NULL REFERENCES pacts(id) ON DELETE CASCADE,
   sprint_id UUID NOT NULL REFERENCES sprints(id) ON DELETE CASCADE,
   sprint_number INTEGER NOT NULL,

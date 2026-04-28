@@ -99,6 +99,10 @@ export default function PactOverviewPage() {
   const [resultsLoading, setResultsLoading] = useState(false);
   const [verdicts, setVerdicts] = useState<any[]>([]);
   const [exitingPact, setExitingPact] = useState(false);
+  const [startingNextSprint, setStartingNextSprint] = useState(false);
+  const [deletingPact, setDeletingPact] = useState(false);
+  const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
+  const [showDeleteModal, setShowDeleteModal] = useState(false);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -126,9 +130,9 @@ export default function PactOverviewPage() {
         .order('created_at', { ascending: false })
         .limit(50);
 
-      // Fetch proof submissions via API endpoint
+      // Fetch proof submissions via API endpoint (only if user is still a member)
       const proofRes = await fetch(`/api/pacts/${pactId}/proof-submissions`);
-      const proofJson = await proofRes.json();
+      const proofJson = proofRes.ok ? await proofRes.json() : { submissions: [] };
       console.log('[fetchExtra] Proof submissions response:', proofJson);
 
       const proofSubmissions = proofJson.submissions ?? [];
@@ -433,21 +437,74 @@ export default function PactOverviewPage() {
     if (!confirm('Are you sure you want to exit this pact?')) return;
     setExitingPact(true);
     try {
+      console.log('[Page] Attempting to exit pact:', pactId);
       const res = await fetch(`/api/pacts/${pactId}/exit`, {
         method: 'POST',
       });
+      console.log('[Page] Exit response status:', res.status);
+      const json = await res.json();
+      console.log('[Page] Exit response:', json);
+      
       if (res.ok) {
         alert('You have exited the pact');
         await fetchExtra();
       } else {
-        const json = await res.json();
+        console.error('[Page] Exit failed:', json);
         alert(json.error || 'Failed to exit pact');
       }
     } catch (e) {
-      console.error('Failed to exit pact:', e);
+      console.error('[Page] Failed to exit pact:', e);
       alert('Failed to exit pact');
     } finally {
       setExitingPact(false);
+    }
+  };
+
+  const handleStartNextSprint = async () => {
+    if (!pact) return;
+    setStartingNextSprint(true);
+    try {
+      const res = await fetch(`/api/pacts/${pactId}/start-next-sprint`, {
+        method: 'POST',
+      });
+      if (res.ok) {
+        router.push(`/pacts/${pactId}/vetting`);
+      } else {
+        const json = await res.json();
+        alert(json.error || 'Failed to start next sprint');
+      }
+    } catch (e) {
+      console.error('Failed to start next sprint:', e);
+      alert('Failed to start next sprint');
+    } finally {
+      setStartingNextSprint(false);
+    }
+  };
+
+  const handleDeletePact = async () => {
+    setShowDeleteModal(false);
+    setDeleteMessage(null);
+    setDeletingPact(true);
+    try {
+      console.log('[Page] Attempting to delete pact:', pactId);
+      const res = await fetch(`/api/pacts/${pactId}/delete`, {
+        method: 'DELETE',
+      });
+      console.log('[Page] Delete response status:', res.status);
+      const json = await res.json();
+      console.log('[Page] Delete response:', json);
+      
+      if (res.ok) {
+        router.push('/lobby');
+      } else {
+        console.error('[Page] Delete failed:', json);
+        setDeleteMessage(json.error || 'Failed to delete pact');
+      }
+    } catch (e) {
+      console.error('[Page] Failed to delete pact:', e);
+      setDeleteMessage('Failed to delete pact');
+    } finally {
+      setDeletingPact(false);
     }
   };
 
@@ -506,8 +563,8 @@ export default function PactOverviewPage() {
                       </Badge>
                     )}
                   </div>
-                  {/* Exit button - shown when user is member and exit is allowed */}
-                  {pact && currentUser && pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && (
+                  {/* Exit button - shown when user is active member but NOT admin */}
+                  {pact && currentUser && pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && !isAdmin && (
                     <Button
                       onClick={handleExitPact}
                       loading={exitingPact}
@@ -515,6 +572,32 @@ export default function PactOverviewPage() {
                       size="sm"
                     >
                       Exit Pact
+                    </Button>
+                  )}
+                  {/* Delete button - shown only for admins */}
+                  {isAdmin && (
+                    <div className="flex flex-col gap-2">
+                      <Button
+                        onClick={() => setShowDeleteModal(true)}
+                        loading={deletingPact}
+                        variant="danger"
+                        size="sm"
+                      >
+                        Delete Pact
+                      </Button>
+                      {deleteMessage && (
+                        <p className="text-xs text-red-600 text-center">{deleteMessage}</p>
+                      )}
+                    </div>
+                  )}
+                  {/* Apply button - shown when user is not a member or has been removed */}
+                  {pact && currentUser && !pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && pact.status !== 'completed' && (
+                    <Button
+                      onClick={() => router.push(`/marketplace?pact=${pactId}`)}
+                      variant="primary"
+                      size="sm"
+                    >
+                      Apply
                     </Button>
                   )}
                 </div>
@@ -669,6 +752,19 @@ export default function PactOverviewPage() {
                   className="w-full"
                 >
                   Reopen Sprint (TEMP)
+                </Button>
+              )}
+
+              {/* Start Next Sprint Button - shown when sprint is completed */}
+              {isAdmin && sprint && sprint.status === 'completed' && (
+                <Button
+                  onClick={handleStartNextSprint}
+                  loading={startingNextSprint}
+                  variant="primary"
+                  size="sm"
+                  className="w-full"
+                >
+                  Start Next Sprint
                 </Button>
               )}
             </Card>
@@ -1170,6 +1266,34 @@ export default function PactOverviewPage() {
         </div>
       </main>
       <BottomNav />
+
+      {/* Delete Confirmation Modal */}
+      {showDeleteModal && (
+        <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+          <div className="bg-white rounded-lg p-6 max-w-md w-full mx-4">
+            <h2 className="text-xl font-semibold text-gray-900 mb-4">Delete Pact</h2>
+            <p className="text-gray-600 mb-6">
+              Are you sure you want to permanently delete this pact? This action cannot be undone and all data will be lost.
+            </p>
+            <div className="flex gap-3 justify-end">
+              <Button
+                onClick={() => setShowDeleteModal(false)}
+                variant="secondary"
+                disabled={deletingPact}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={handleDeletePact}
+                loading={deletingPact}
+                variant="danger"
+              >
+                Delete
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
