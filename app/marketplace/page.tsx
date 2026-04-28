@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useRef } from 'react';
 import { Search, Filter, Users, TrendingUp, X } from 'lucide-react';
 import Link from 'next/link';
 import { useRouter } from 'next/navigation';
@@ -35,6 +35,7 @@ export default function MarketplacePage() {
   const [applying, setApplying] = useState<string | null>(null);
   const [appliedIds, setAppliedIds] = useState<Set<string>>(new Set());
   const [memberPactIds, setMemberPactIds] = useState<Set<string>>(new Set());
+  const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   const load = useCallback(async () => {
     try {
@@ -78,6 +79,51 @@ export default function MarketplacePage() {
 
   useEffect(() => { load(); }, [load]);
   useEffect(() => { loadUserState(); }, [loadUserState]);
+
+  // Realtime subscriptions for marketplace updates
+  useEffect(() => {
+    if (!user) return;
+    const supabase = createClient();
+
+    // Subscribe to pact_applications changes (to update applied status)
+    const applicationsChannel = supabase
+      .channel(`pact_applications:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pact_applications', filter: `user_id=eq.${user.id}` },
+        () => { loadUserState(); }
+      )
+      .subscribe();
+
+    // Subscribe to pact_members changes (to update member status)
+    const membersChannel = supabase
+      .channel(`pact_members:${user.id}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pact_members', filter: `user_id=eq.${user.id}` },
+        () => { 
+          loadUserState();
+          load();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to pacts changes (to update pact list)
+    const pactsChannel = supabase
+      .channel('pacts:marketplace')
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pacts' },
+        () => { load(); }
+      )
+      .subscribe();
+
+    return () => {
+      applicationsChannel.unsubscribe();
+      membersChannel.unsubscribe();
+      pactsChannel.unsubscribe();
+    };
+  }, [user, load, loadUserState]);
 
   const handleApply = async (pact: PactWithMembers) => {
     if (!user) { router.push('/login?next=/marketplace'); return; }

@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState, useCallback } from 'react';
+import { useEffect, useState, useCallback, useRef } from 'react';
 import { useParams, useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -103,6 +103,7 @@ export default function PactOverviewPage() {
   const [deletingPact, setDeletingPact] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   // Auth guard - removed since server-side auth handles it
 
@@ -133,7 +134,6 @@ export default function PactOverviewPage() {
       // Fetch proof submissions via API endpoint (only if user is still a member)
       const proofRes = await fetch(`/api/pacts/${pactId}/proof-submissions`);
       const proofJson = proofRes.ok ? await proofRes.json() : { submissions: [] };
-      console.log('[fetchExtra] Proof submissions response:', proofJson);
 
       const proofSubmissions = proofJson.submissions ?? [];
       const filteredProofSubmissions = proofSubmissions;
@@ -233,6 +233,71 @@ export default function PactOverviewPage() {
   useEffect(() => {
     fetchExtra();
   }, [fetchExtra]);
+
+  const currentUser = user as any;
+  const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
+
+  // Realtime subscriptions for applications, notifications, and members
+  useEffect(() => {
+    if (!pact || !user) return;
+    const currentUser = user as any;
+    const isAdmin = pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin');
+    if (!isAdmin) return;
+    
+    const supabase = createClient();
+
+    // Subscribe to pact_applications changes
+    const applicationsChannel = supabase
+      .channel(`pact_applications:${pactId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pact_applications', filter: `pact_id=eq.${pactId}` },
+        () => { fetchExtra(); }
+      )
+      .subscribe();
+
+    // Subscribe to notifications changes
+    const notificationsChannel = supabase
+      .channel(`notifications:${pactId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'notifications', filter: `pact_id=eq.${pactId}` },
+        () => { fetchExtra(); }
+      )
+      .subscribe();
+
+    // Subscribe to pact_members changes
+    const membersChannel = supabase
+      .channel(`pact_members:${pactId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'pact_members', filter: `pact_id=eq.${pactId}` },
+        () => { 
+          // Refresh pact data to get updated members
+          window.location.reload();
+        }
+      )
+      .subscribe();
+
+    // Subscribe to sprints changes
+    const sprintsChannel = supabase
+      .channel(`sprints:${pactId}`)
+      .on(
+        'postgres_changes',
+        { event: '*', schema: 'public', table: 'sprints', filter: `pact_id=eq.${pactId}` },
+        () => { 
+          window.location.reload();
+        }
+      )
+      .subscribe();
+
+    return () => {
+      applicationsChannel.unsubscribe();
+      notificationsChannel.unsubscribe();
+      membersChannel.unsubscribe();
+      sprintsChannel.unsubscribe();
+    };
+  }, [pact, pactId, user, fetchExtra]);
 
   const fetchResults = async () => {
     setResultsLoading(true);
@@ -392,11 +457,11 @@ export default function PactOverviewPage() {
     );
   }
 
-  const currentUser = user as any;
-  const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
-
   const fetchPendingGoals = useCallback(async () => {
-    if (!isAdmin || !pact) return;
+    if (!pact || !user) return;
+    const currentUser = user as any;
+    const isAdmin = pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin');
+    if (!isAdmin) return;
     setModerationLoading(true);
     try {
       const res = await fetch('/api/admin/goals');
@@ -413,7 +478,7 @@ export default function PactOverviewPage() {
     } finally {
       setModerationLoading(false);
     }
-  }, [isAdmin, pact, pactId]);
+  }, [isAdmin, pact, pactId, user]);
 
   const handleClearGoal = async (goalId: string) => {
     try {
@@ -437,23 +502,19 @@ export default function PactOverviewPage() {
     if (!confirm('Are you sure you want to exit this pact?')) return;
     setExitingPact(true);
     try {
-      console.log('[Page] Attempting to exit pact:', pactId);
       const res = await fetch(`/api/pacts/${pactId}/exit`, {
         method: 'POST',
       });
-      console.log('[Page] Exit response status:', res.status);
       const json = await res.json();
-      console.log('[Page] Exit response:', json);
       
       if (res.ok) {
-        alert('You have exited the pact');
-        await fetchExtra();
+        alert('Successfully exited the pact');
+        router.refresh();
       } else {
-        console.error('[Page] Exit failed:', json);
         alert(json.error || 'Failed to exit pact');
       }
     } catch (e) {
-      console.error('[Page] Failed to exit pact:', e);
+      console.error('Failed to exit pact:', e);
       alert('Failed to exit pact');
     } finally {
       setExitingPact(false);
@@ -486,22 +547,18 @@ export default function PactOverviewPage() {
     setDeleteMessage(null);
     setDeletingPact(true);
     try {
-      console.log('[Page] Attempting to delete pact:', pactId);
       const res = await fetch(`/api/pacts/${pactId}/delete`, {
         method: 'DELETE',
       });
-      console.log('[Page] Delete response status:', res.status);
       const json = await res.json();
-      console.log('[Page] Delete response:', json);
       
       if (res.ok) {
         router.push('/lobby');
       } else {
-        console.error('[Page] Delete failed:', json);
         setDeleteMessage(json.error || 'Failed to delete pact');
       }
     } catch (e) {
-      console.error('[Page] Failed to delete pact:', e);
+      console.error('Failed to delete pact:', e);
       setDeleteMessage('Failed to delete pact');
     } finally {
       setDeletingPact(false);
@@ -563,8 +620,8 @@ export default function PactOverviewPage() {
                       </Badge>
                     )}
                   </div>
-                  {/* Exit button - shown when user is active member but NOT admin */}
-                  {pact && currentUser && pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && !isAdmin && (
+                  {/* Exit button - shown when user is active member but NOT admin, and only when no active sprint or sprint is completed */}
+                  {pact && currentUser && pact.members.some((m) => m.user_id === currentUser.id && m.status === 'active') && !isAdmin && (!sprint || sprint.status === 'completed') && (
                     <Button
                       onClick={handleExitPact}
                       loading={exitingPact}
@@ -574,8 +631,8 @@ export default function PactOverviewPage() {
                       Exit Pact
                     </Button>
                   )}
-                  {/* Delete button - shown only for admins */}
-                  {isAdmin && (
+                  {/* Delete button - shown only for admins, and only when no active sprint or sprint is completed */}
+                  {isAdmin && (!sprint || sprint.status === 'completed') && (
                     <div className="flex flex-col gap-2">
                       <Button
                         onClick={() => setShowDeleteModal(true)}
@@ -706,7 +763,7 @@ export default function PactOverviewPage() {
                 )}
               </div>
 
-              <ProgressBar value={sprintPct} label="Sprint Progress" showPercent />
+              <ProgressBar value={sprint.status === 'completed' ? 100 : sprintPct} label="Sprint Progress" showPercent />
 
               {/* My goal */}
               {myGoal && (
@@ -983,13 +1040,11 @@ export default function PactOverviewPage() {
                                     size="sm"
                                     variant="secondary"
                                     onClick={() => {
-                                      // Detect file type from URL extension as fallback
                                       const url = proofData.proof_url;
                                       const ext = url.split('.').pop()?.toLowerCase() || '';
                                       const detectedType = ext.match(/^(jpg|jpeg|png|gif|webp)$/) ? 'image' :
                                                            ext.match(/^(mp4|webm|mov|avi)$/) ? 'video' :
                                                            ext.match(/^(mp3|wav|ogg|m4a)$/) ? 'audio' : proofData.proof_type;
-                                      console.log('[Proof Modal] Opening modal with type:', detectedType, 'from URL:', url);
                                       setProofModal({ open: true, url: proofData.proof_url, type: detectedType });
                                     }}
                                   >

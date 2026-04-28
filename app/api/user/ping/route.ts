@@ -41,7 +41,6 @@ export async function POST() {
       .eq('id', user.id)
 
     if (updateError) {
-      console.error('[Ping API] Error updating last_seen_at:', updateError)
       return NextResponse.json(
         { error: 'Failed to update activity' },
         { status: 500 }
@@ -50,7 +49,6 @@ export async function POST() {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Ping API] Unexpected error:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

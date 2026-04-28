@@ -25,6 +25,8 @@ export default function StakesPage() {
   const [stakes, setStakes] = useState<StakeWithDetails[]>([]);
   const [loading, setLoading] = useState(true);
   const [historyOpen, setHistoryOpen] = useState(false);
+  const [totalEarned, setTotalEarned] = useState(0);
+  const [totalLost, setTotalLost] = useState(0);
 
   const load = useCallback(async () => {
     const currentUser = user as any;
@@ -34,6 +36,8 @@ export default function StakesPage() {
       const json = await res.json();
       if (res.ok) {
         setStakes((json.stakes as StakeWithDetails[]) ?? []);
+        setTotalEarned(json.totalEarned ?? 0);
+        setTotalLost(json.totalLost ?? 0);
       } else {
         console.error('Failed to load stakes:', json.error);
       }
@@ -89,8 +93,8 @@ export default function StakesPage() {
           <div className="grid grid-cols-3 gap-3">
             {[
               { label: 'At Risk', value: formatCurrency(atRisk), color: '#F4A261', bg: '#FEF3E2' },
-              { label: 'Total Earned', value: formatCurrency((profile as any)?.total_earned ?? 0), color: '#2D6A4F', bg: '#D8EDDA' },
-              { label: 'Total Lost', value: formatCurrency((profile as any)?.total_lost ?? 0), color: '#E07A5F', bg: '#FDF0EC' },
+              { label: 'Total Earned', value: formatCurrency(totalEarned), color: '#2D6A4F', bg: '#D8EDDA' },
+              { label: 'Total Lost', value: formatCurrency(totalLost), color: '#E07A5F', bg: '#FDF0EC' },
             ].map(({ label, value, color, bg }) => (
               <div key={label} className="rounded-[20px] p-4 text-center" style={{ backgroundColor: bg }}>
                 <p className="font-[family-name:var(--font-display)] font-bold text-xl" style={{ color }}>{value}</p>

@@ -4,8 +4,6 @@ import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
 
 export async function GET() {
-  console.log('[api/user/pacts] Request')
-  
   try {
     const cookieStore = await cookies()
     const supabase = createServerClient(

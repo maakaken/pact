@@ -1,6 +1,6 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useState, useRef } from 'react';
 import { useRouter } from 'next/navigation';
 import Link from 'next/link';
 import { createClient } from '@/lib/supabase/client';
@@ -60,6 +60,7 @@ export default function LobbyPage() {
   const [activePacts, setActivePacts] = useState<ActivePactRow[]>([]);
   const [discoverPacts, setDiscoverPacts] = useState<Pact[]>([]);
   const [notifications, setNotifications] = useState<Notification[]>([]);
+  const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   useEffect(() => {
     console.log('[lobby] Loading lobby page...');
@@ -144,6 +145,59 @@ export default function LobbyPage() {
 
   useEffect(() => {
     setGreeting(getGreeting());
+  }, []);
+
+  // Realtime subscriptions for lobby updates
+  useEffect(() => {
+    const supabase = createClient();
+    
+    // Get user ID for subscriptions
+    const getUserId = async () => {
+      const { data: { session } } = await supabase.auth.getSession();
+      return session?.user?.id;
+    };
+
+    let userId: string | undefined;
+    let notificationsChannel: any = null;
+    let pactMembersChannel: any = null;
+
+    const setupSubscriptions = async () => {
+      userId = await getUserId();
+      if (!userId) return;
+
+      // Subscribe to notifications for this user
+      notificationsChannel = supabase
+        .channel(`notifications:${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
+          () => { 
+            // Reload the page to refresh all data
+            window.location.reload();
+          }
+        )
+        .subscribe();
+
+      // Subscribe to pact_members for this user (when they join/leave pacts)
+      pactMembersChannel = supabase
+        .channel(`pact_members:${userId}`)
+        .on(
+          'postgres_changes',
+          { event: '*', schema: 'public', table: 'pact_members', filter: `user_id=eq.${userId}` },
+          () => { 
+            // Reload the page to refresh pact list
+            window.location.reload();
+          }
+        )
+        .subscribe();
+    };
+
+    setupSubscriptions();
+
+    return () => {
+      notificationsChannel?.unsubscribe();
+      pactMembersChannel?.unsubscribe();
+    };
   }, []);
 
   const activePactList = activePacts.map((r) => ({ id: r.pact.id, name: r.pact.name }));

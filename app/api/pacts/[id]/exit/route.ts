@@ -109,7 +109,6 @@ export async function POST(
     }
 
     // If no sprint exists, return reserved coins
-    // TODO: Re-enable once reserved_coins column is confirmed to exist in database
     if (!currentSprint) {
       try {
         // Check if reserved_coins column exists by trying to select it

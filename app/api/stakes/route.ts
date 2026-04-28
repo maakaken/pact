@@ -77,6 +77,29 @@ export async function GET() {
       console.error('[Stakes API] Error fetching sprints:', sprintsError)
     }
 
+    // Fetch verdicts for the user to calculate earnings
+    const { data: verdictsData, error: verdictsError } = await serviceClient
+      .from('verdicts')
+      .select('*')
+      .eq('user_id', user.id)
+
+    if (verdictsError) {
+      console.error('[Stakes API] Error fetching verdicts:', verdictsError)
+    }
+
+    // Calculate total earned from verdicts
+    const totalEarned = verdictsData?.reduce((sum, v) => {
+      if (v.outcome === 'passed' || v.outcome === 'sympathy_pass') {
+        return sum + (v.dividend_amount || 0)
+      }
+      return sum
+    }, 0) ?? 0
+
+    // Calculate total lost from forfeited stakes
+    const totalLost = stakesData
+      .filter(s => s.status === 'forfeited')
+      .reduce((sum, s) => sum + s.amount, 0)
+
     // Combine data
     const pactsByPactId = new Map(pactsData?.map(p => [p.id, p]) ?? [])
     const sprintsBySprintId = new Map(sprintsData?.map(s => [s.id, s]) ?? [])
@@ -87,7 +110,7 @@ export async function GET() {
       sprints: sprintsBySprintId.get(stake.sprint_id ?? '') ?? null,
     }))
 
-    return NextResponse.json({ stakes: stakesWithDetails })
+    return NextResponse.json({ stakes: stakesWithDetails, totalEarned, totalLost })
   } catch (err) {
     console.error('[Stakes API] Unexpected error:', err)
     return NextResponse.json(
