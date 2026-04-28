@@ -200,47 +200,27 @@ export default function LockerPage() {
       }
     }
 
-    // 2. Fetch goal_id
-    const { data: goalData } = await supabase
-      .from('goals')
-      .select('id')
-      .eq('pact_id', pactId)
-      .eq('user_id', user.id)
-      .eq('sprint_number', pact.current_sprint)
-      .single();
-
     const filteredLinks = externalLinks.filter((l) => l.url.trim() !== '');
 
-    // 3. Insert submission
-    const { data: newSub, error: subError } = await supabase
-      .from('submissions')
-      .insert({
+    // 2. Submit proof via API
+    const res = await fetch(`/api/pacts/${pactId}/submit-proof`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
         sprint_id: pact.currentSprint.id,
-        user_id: user.id,
-        goal_id: goalData?.id ?? null,
-        caption: caption.trim() || null,
         file_urls: fileUrls.length > 0 ? fileUrls : null,
-        external_links: filteredLinks.length > 0 ? filteredLinks.map((l) => JSON.stringify(l)) : null,
-        moderation_status: 'pending',
-        is_auto_failed: false,
-      })
-      .select()
-      .single();
+        external_links: filteredLinks.length > 0 ? filteredLinks : null,
+        caption: caption.trim() || null,
+      }),
+    });
 
-    if (subError || !newSub) {
-      setSubmitError('Failed to submit proof. Please try again.');
+    const json = await res.json();
+
+    if (!res.ok) {
+      setSubmitError(json.error || 'Failed to submit proof. Please try again.');
       setSubmitting(false);
       return;
     }
-
-    // 4. Insert into moderation_queue
-    await supabase.from('moderation_queue').insert({
-      type: 'evidence_review',
-      submission_id: newSub.id,
-      pact_id: pactId,
-      user_id: user.id,
-      status: 'pending',
-    });
 
     await fetchData();
     setSubmitting(false);

@@ -80,6 +80,17 @@ export async function POST(
 
     console.log('[Force End Voting] Found sprint:', sprint.id)
 
+    // Set sprint ends_at to current time to show 100% progress and end timer
+    const now = new Date().toISOString()
+    const { error: sprintUpdateError } = await serviceClient
+      .from('sprints')
+      .update({ ends_at: now })
+      .eq('id', sprint.id)
+
+    if (sprintUpdateError) {
+      console.error('[Force End Voting] Error updating sprint ends_at:', sprintUpdateError)
+    }
+
     // Calculate verdicts using service client to bypass RLS
     try {
       await calculateVerdicts(sprint.id, serviceClient)
