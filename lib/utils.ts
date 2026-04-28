@@ -38,6 +38,7 @@ export function getInitials(name: string | null | undefined): string {
   if (!name) return '?';
   return name
     .split(' ')
+    .filter(Boolean)
     .map((n) => n[0])
     .join('')
     .toUpperCase()

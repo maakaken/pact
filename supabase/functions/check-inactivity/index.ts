@@ -1,8 +1,7 @@
-/// <reference path="../types.d.ts" />
+import { createClient } from '@supabase/supabase-js';
+
 // Supabase Edge Function: check-inactivity
 // Scheduled via pg_cron to run every hour
-
-import { createClient } from '@supabase/supabase-js';
 
 // Validate required environment variables
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
@@ -39,6 +38,47 @@ Deno.serve(async () => {
       const endsAt = new Date(sprint.ends_at);
       const msUntilEnd = endsAt.getTime() - now.getTime();
 
+      // Phase 1: Handle Sprint Transition to Verdict Phase
+      if (msUntilEnd < 0) {
+        const { data: currentSprint } = await supabase
+          .from('sprints')
+          .select('status')
+          .eq('id', sprint.id)
+          .single();
+
+        if (currentSprint?.status === 'active') {
+          console.log(`Transitioning sprint ${sprint.id} to verdict_phase`);
+          // Transition to verdict_phase
+          await supabase.from('sprints')
+            .update({ status: 'verdict_phase' })
+            .eq('id', sprint.id);
+
+          // Update pact status
+          await supabase.from('pacts')
+            .update({ status: 'verdict' })
+            .eq('id', sprint.pact_id);
+
+          // Send verdict_open notifications to all pact members
+          const { data: allMembers } = await supabase
+            .from('pact_members')
+            .select('user_id')
+            .eq('pact_id', sprint.pact_id)
+            .eq('status', 'active');
+
+          if (allMembers) {
+            const notifications = allMembers.map(m => ({
+              user_id: m.user_id,
+              type: 'verdict_open',
+              title: 'Verdict Phase Open',
+              body: 'The sprint has ended. Review submissions and cast your votes.',
+              pact_id: sprint.pact_id,
+            }));
+            await supabase.from('notifications').insert(notifications);
+          }
+        }
+      }
+
+      // Phase 2: Handle Individual Member Inactivity/Auto-fail
       // Get all active members for this pact
       const { data: members } = await supabase
         .from('pact_members')
@@ -68,41 +108,10 @@ Deno.serve(async () => {
             .single();
 
           const lastSeen = profile?.last_seen_at ? new Date(profile.last_seen_at) : null;
-          const daysSinceLastSeen = lastSeen ? Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24)) : 999; // Default to 999 if never seen
+          const daysSinceLastSeen = lastSeen ? Math.floor((now.getTime() - lastSeen.getTime()) / (1000 * 60 * 60 * 24)) : 999;
 
           if (msUntilEnd < 0) {
-            // Sprint ended — transition to verdict_phase if not already done
-            const { data: currentSprint } = await supabase
-              .from('sprints')
-              .select('status')
-              .eq('id', sprint.id)
-              .single();
-
-            if (currentSprint?.status === 'active') {
-              // Transition to verdict_phase
-              await supabase.from('sprints')
-                .update({ status: 'verdict_phase' })
-                .eq('id', sprint.id);
-
-              // Send verdict_open notifications to all pact members
-              const { data: allMembers } = await supabase
-                .from('pact_members')
-                .select('user_id')
-                .eq('pact_id', sprint.pact_id)
-                .eq('status', 'active');
-
-              for (const member of allMembers ?? []) {
-                await supabase.from('notifications').insert({
-                  user_id: member.user_id,
-                  type: 'verdict_open',
-                  title: 'Verdict Phase Open',
-                  body: 'The sprint has ended. Review submissions and cast your votes.',
-                  pact_id: sprint.pact_id,
-                });
-              }
-            }
-
-            // Auto-fail
+            // Auto-fail logic...
             const { data: existingVerdict } = await supabase
               .from('verdicts')
               .select('id')
@@ -111,6 +120,8 @@ Deno.serve(async () => {
               .single();
 
             if (!existingVerdict) {
+              // ... rest of auto-fail logic unchanged ...
+
               // Auto-create failed submission
               await supabase.from('submissions').insert({
                 sprint_id: sprint.id,

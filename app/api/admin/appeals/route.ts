@@ -53,48 +53,6 @@ export async function GET() {
       return NextResponse.json({ appeals: [] })
     }
 
-    // Fetch profiles for appeal users
-    const userIds = appealsData.map(a => a.user_id)
-    const { data: profilesData } = await serviceClient
-      .from('profiles')
-      .select('*')
-      .in('id', userIds)
-
-    // Fetch group integrity scores for pacts involved in appeals
-    const appealPactIds = appealsData.map((a: any) => a.verdicts?.sprints?.pact_id).filter(Boolean) as string[]
-    const groupMembersData = appealPactIds.length > 0
-      ? await serviceClient
-        .from('pact_members')
-        .select('pact_id, user_id')
-        .in('pact_id', appealPactIds)
-      : { data: [] }
-
-    const groupMembers = groupMembersData.data ?? []
-
-    // Fetch profiles for all group members to calculate group integrity score
-    const groupUserIds = groupMembers.map((m: any) => m.user_id)
-    const groupProfilesData = groupUserIds.length > 0
-      ? await serviceClient
-        .from('profiles')
-        .select('id, integrity_score')
-        .in('id', groupUserIds)
-      : { data: [] }
-
-    const groupProfiles = groupProfilesData.data ?? []
-
-    // Calculate group integrity score (average of all members)
-    const profilesById = new Map()
-    groupProfiles.forEach((p: any) => profilesById.set(p.id, p.integrity_score))
-
-    const groupIntegrityByPactId = new Map()
-    groupMembers.forEach((m: any) => {
-      const scores = groupMembers
-        .filter((gm: any) => gm.pact_id === m.pact_id)
-        .map((gm: any) => profilesById.get(gm.user_id) ?? 0)
-      const avgScore = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0
-      groupIntegrityByPactId.set(m.pact_id, avgScore)
-    })
-
     // Fetch verdicts for appeals
     const verdictIds = appealsData.map(a => a.verdict_id)
     const { data: verdictsData } = verdictIds.length
@@ -122,6 +80,48 @@ export async function GET() {
         .in('id', pactIds)
       : { data: [] }
 
+    // Fetch group integrity scores for pacts involved in appeals
+    const appealPactIds = pactIds as string[]
+    const groupMembersData = appealPactIds.length > 0
+      ? await serviceClient
+        .from('pact_members')
+        .select('pact_id, user_id')
+        .in('pact_id', appealPactIds)
+      : { data: [] }
+
+    const groupMembers = groupMembersData.data ?? []
+
+    // Fetch profiles for all group members to calculate group integrity score
+    const groupUserIds = groupMembers.map((m: any) => m.user_id)
+    const groupProfilesData = groupUserIds.length > 0
+      ? await serviceClient
+        .from('profiles')
+        .select('id, integrity_score')
+        .in('id', groupUserIds)
+      : { data: [] }
+
+    const groupProfiles = groupProfilesData.data ?? []
+
+    // Calculate group integrity score (average of all members)
+    const profilesById = new Map()
+    groupProfiles.forEach((p: any) => profilesById.set(p.id, p.integrity_score))
+
+    const groupIntegrityByPactId = new Map()
+    const pactIdsSet = new Set(appealPactIds)
+    pactIdsSet.forEach((pId: string) => {
+      const pIdMembers = groupMembers.filter((gm: any) => gm.pact_id === pId)
+      const scores = pIdMembers.map((gm: any) => profilesById.get(gm.user_id) ?? 0)
+      const avgScore = scores.length > 0 ? scores.reduce((a: number, b: number) => a + b, 0) / scores.length : 0
+      groupIntegrityByPactId.set(pId, avgScore)
+    })
+
+    // Fetch profiles for appeal users
+    const userIds = appealsData.map(a => a.user_id)
+    const { data: profilesData } = await serviceClient
+      .from('profiles')
+      .select('*')
+      .in('id', userIds)
+
     // Group data
     const profilesByUserId = new Map()
     ;(profilesData ?? []).forEach((profile) => {
@@ -129,15 +129,15 @@ export async function GET() {
     })
 
     const verdictsByVerdictId = new Map()
-    const pactsByPactId = new Map()
+    const pactsByPactIdMap = new Map()
     ;(pactsData ?? []).forEach((pact) => {
-      pactsByPactId.set(pact.id, pact)
+      pactsByPactIdMap.set(pact.id, pact)
     })
     const sprintsBySprintId = new Map()
     ;(sprintsData ?? []).forEach((sprint) => {
       sprintsBySprintId.set(sprint.id, {
         pact_id: sprint.pact_id,
-        pacts: pactsByPactId.get(sprint.pact_id) ?? null,
+        pacts: pactsByPactIdMap.get(sprint.pact_id) ?? null,
       })
     })
     ;(verdictsData ?? []).forEach((verdict) => {

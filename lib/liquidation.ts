@@ -31,17 +31,33 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
   const passedVerdicts = verdicts.filter((v) => v.outcome === 'passed');
   const sympathyVerdicts = verdicts.filter((v) => v.outcome === 'sympathy_pass');
 
+  // 1. Initial pool from totally failed verdicts
   let failurePool = failedVerdicts.reduce((sum, v) => {
     const stake = stakeMap[v.user_id];
     return sum + (stake?.amount ?? 0);
   }, 0);
 
+  // 2. Add forfeited portions from sympathy pass members to the pool
+  const sympathyDetails = sympathyVerdicts.map((verdict) => {
+    const stake = stakeMap[verdict.user_id];
+    const returnAmount = stake ? stake.amount * (verdict.sympathy_ratio ?? 0) : 0;
+    const forfeitedAmount = stake ? stake.amount - returnAmount : 0;
+    return { verdict, stake, returnAmount, forfeitedAmount };
+  });
+
+  for (const detail of sympathyDetails) {
+    failurePool += detail.forfeitedAmount;
+  }
+
+  // 3. Now calculate final distributable amount and dividend
   const platformRevenue = failurePool * 0.05;
   const distributable = failurePool - platformRevenue;
   const winnerCount = passedVerdicts.length;
   const dividend = winnerCount > 0 ? distributable / winnerCount : 0;
 
-  // Process passed members - return stake + dividend to coin_balance
+  console.log(`[Liquidation] Pool: ${failurePool}, Distributable: ${distributable}, Dividend: ${dividend} to ${winnerCount} winners`);
+
+  // 4. Process passed members - return stake + dividend to coin_balance
   for (const verdict of passedVerdicts) {
     const stake = stakeMap[verdict.user_id];
     if (stake) {
@@ -74,7 +90,7 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
       .eq('id', verdict.id);
   }
 
-  // Process failed members - stake is forfeited (already deducted when locked)
+  // 5. Process failed members - stake is forfeited
   for (const verdict of failedVerdicts) {
     const stake = stakeMap[verdict.user_id];
     if (stake) {
@@ -101,20 +117,11 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
     }
   }
 
-  // Process sympathy pass members - proportional stake return
-  for (const verdict of sympathyVerdicts) {
-    const stake = stakeMap[verdict.user_id];
-    let returnAmount = 0;
+  // 6. Process sympathy pass members - proportional stake return
+  for (const detail of sympathyDetails) {
+    const { verdict, stake, returnAmount, forfeitedAmount } = detail;
 
     if (stake) {
-      // Calculate proportional return based on sympathy_ratio
-      // sympathy_ratio = number of sympathy votes / total eligible voters
-      // If 1 out of 10 voted sympathy, ratio = 0.1, so 10% of stake is returned
-      const totalVotes = verdict.approve_count + verdict.reject_count + verdict.sympathy_count;
-      const sympathyRatio = totalVotes > 0 ? verdict.sympathy_count / totalVotes : 0;
-      returnAmount = stake.amount * sympathyRatio;
-      const forfeitedAmount = stake.amount - returnAmount;
-
       // Update stake status to partially returned
       await supabase
         .from('stakes')
@@ -139,11 +146,6 @@ export async function runLiquidationEngine(sprintId: string, client?: SupabaseCl
             coin_balance: profile.coin_balance + returnAmount,
           })
           .eq('id', verdict.user_id);
-      }
-
-      // Add forfeited amount to failure pool for distribution
-      if (forfeitedAmount > 0) {
-        failurePool += forfeitedAmount;
       }
     }
 

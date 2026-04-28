@@ -80,18 +80,24 @@ export async function DELETE(
     }
 
     // If sprint is completed, must wait 10 minutes after verdict ends
+    // Only apply cooldown if verdict_ends_at is in the past (natural completion)
+    // If verdict_ends_at is in the future, it was likely force-completed, so allow deletion
     if (activeSprint && activeSprint.status === 'completed' && activeSprint.verdict_ends_at) {
       const verdictEndTime = new Date(activeSprint.verdict_ends_at).getTime()
       const currentTime = new Date().getTime()
-      const tenMinutesInMs = 10 * 60 * 1000
-      const waitUntil = verdictEndTime + tenMinutesInMs
       
-      if (currentTime < waitUntil) {
-        const remainingMinutes = Math.ceil((waitUntil - currentTime) / (60 * 1000))
-        return NextResponse.json(
-          { error: `Cannot delete pact yet. Please wait ${remainingMinutes} more minutes after results are declared.` },
-          { status: 400 }
-        )
+      // Only enforce cooldown if verdict has actually ended (is in the past)
+      if (verdictEndTime <= currentTime) {
+        const tenMinutesInMs = 10 * 60 * 1000
+        const waitUntil = verdictEndTime + tenMinutesInMs
+        
+        if (currentTime < waitUntil) {
+          const remainingMinutes = Math.ceil((waitUntil - currentTime) / (60 * 1000))
+          return NextResponse.json(
+            { error: `Cannot delete pact yet. Please wait ${remainingMinutes} more minutes after results are declared.` },
+            { status: 400 }
+          )
+        }
       }
     }
 

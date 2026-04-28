@@ -1,8 +1,7 @@
-/// <reference path="../types.d.ts" />
+import { createClient } from '@supabase/supabase-js';
+
 // Supabase Edge Function: finalize-verdicts
 // Scheduled via pg_cron to run every 15 minutes
-
-import { createClient } from '@supabase/supabase-js';
 
 // Validate required environment variables
 const supabaseUrl = Deno.env.get('SUPABASE_URL');

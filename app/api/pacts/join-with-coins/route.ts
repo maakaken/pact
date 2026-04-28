@@ -71,22 +71,24 @@ export async function POST(request: Request) {
       )
     }
 
-    // Check if user has sufficient balance (available + reserved)
+    // Check if user has sufficient balance in coin_balance
     const coinBalance = profile.coin_balance ?? 0
     const reservedCoins = profile.reserved_coins ?? 0
-    const totalAvailable = coinBalance + reservedCoins
 
-    if (totalAvailable < pact.stake_amount) {
+    if (coinBalance < pact.stake_amount) {
       return NextResponse.json(
-        { error: `Insufficient p-coins balance. You have 🪙 ${coinBalance.toLocaleString('en-IN')} available + 🪙 ${reservedCoins.toLocaleString('en-IN')} reserved, but need 🪙 ${pact.stake_amount.toLocaleString('en-IN')} p-coins.` },
+        { error: `Insufficient p-coins balance. You have 🪙 ${coinBalance.toLocaleString('en-IN')} available, but need 🪙 ${pact.stake_amount.toLocaleString('en-IN')} p-coins to join this pact.` },
         { status: 400 }
       )
     }
 
-    // Reserve coins for this pact
+    // Reserve coins for this pact: deduct from coin_balance, add to reserved_coins
     const { error: reserveError } = await serviceClient
       .from('profiles')
-      .update({ reserved_coins: reservedCoins + pact.stake_amount })
+      .update({ 
+        coin_balance: coinBalance - pact.stake_amount,
+        reserved_coins: reservedCoins + pact.stake_amount 
+      })
       .eq('id', user.id)
 
     if (reserveError) {

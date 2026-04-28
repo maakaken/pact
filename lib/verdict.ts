@@ -135,6 +135,7 @@ export async function calculateVerdicts(sprintId: string, client?: SupabaseClien
       approve_count: approveCount,
       reject_count: rejectCount,
       sympathy_count: sympathyCount,
+      sympathy_ratio: sympathyRatio,
       stake_returned: false,
     });
 

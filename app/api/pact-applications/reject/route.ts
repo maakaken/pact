@@ -89,6 +89,40 @@ export async function POST(request: Request) {
       )
     }
 
+    // Return reserved coins to the applicant
+    try {
+      // Fetch pact to get stake amount
+      const { data: pact } = await serviceClient
+        .from('pacts')
+        .select('stake_amount')
+        .eq('id', pact_id)
+        .single()
+
+      // Fetch applicant's profile
+      const { data: profile } = await serviceClient
+        .from('profiles')
+        .select('coin_balance, reserved_coins')
+        .eq('id', application.user_id)
+        .single()
+
+      if (pact && profile) {
+        const stakeAmount = pact.stake_amount
+        const coinBalance = profile.coin_balance ?? 0
+        const reservedCoins = profile.reserved_coins ?? 0
+
+        await serviceClient
+          .from('profiles')
+          .update({
+            coin_balance: coinBalance + stakeAmount,
+            reserved_coins: Math.max(0, reservedCoins - stakeAmount)
+          })
+          .eq('id', application.user_id)
+      }
+    } catch (coinError) {
+      console.error('[Reject Application] Error returning reserved coins:', coinError)
+      // Continue anyway, notification is more important for UX
+    }
+
     // Send notification to the applicant
     await serviceClient.from('notifications').insert({
       user_id: application.user_id,

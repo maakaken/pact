@@ -114,18 +114,22 @@ export async function POST(
         // Check if reserved_coins column exists by trying to select it
         const { data: profile, error: profileError } = await serviceClient
           .from('profiles')
-          .select('reserved_coins')
+          .select('coin_balance, reserved_coins')
           .eq('id', user.id)
           .single()
 
-        if (profile && !profileError && profile.reserved_coins !== undefined) {
+        if (profile && !profileError) {
+          const coinBalance = profile.coin_balance ?? 0
           const reservedCoins = profile.reserved_coins ?? 0
           const stakeAmount = pact.stake_amount
 
-          // Return reserved coins
+          // Return reserved coins to coin_balance
           const { error: updateError } = await serviceClient
             .from('profiles')
-            .update({ reserved_coins: Math.max(0, reservedCoins - stakeAmount) })
+            .update({ 
+              coin_balance: coinBalance + stakeAmount,
+              reserved_coins: Math.max(0, reservedCoins - stakeAmount) 
+            })
             .eq('id', user.id)
 
           if (updateError) {
