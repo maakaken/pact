@@ -1,0 +1,27 @@
+# CodeRabbit Configuration
+# Documentation: https://docs.coderabbit.ai/getting-started/configure-coderabbit
+
+language: "en-US"
+
+reviews:
+  profile: "chill" # Options: "chill", "assertive". Chill is better for iterative IDE use.
+  request_review_command: "/review"
+  auto_review:
+    enabled: true
+    drafts: false
+  
+  # Fine-tune which files CodeRabbit analyzes
+  path_filters:
+    - "!node_modules/**"
+    - "!.next/**"
+    - "!public/**"
+    - "!package-lock.json"
+    - "!supabase/.temp/**"
+    - "**/*.{js,jsx,ts,tsx,sql}" # Focus on source code and migrations
+
+  # High-level summary settings
+  summary:
+    enabled: true
+
+chat:
+  enabled: true # Allows you to reply to CodeRabbit comments to iterate on fixes
