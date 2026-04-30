@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         if (!Array.isArray(parsedExternalLinks)) {
           parsedExternalLinks = null
         }
-      } catch {
+      } catch (err) {
         parsedExternalLinks = null
       }
     }
@@ -84,7 +84,6 @@ export async function POST(request: Request) {
       .upload(fileName, file, { upsert: true })
 
     if (uploadError) {
-      console.error('[Locker Evidence Upload API] Storage upload error:', uploadError)
       return NextResponse.json(
         { error: `Storage upload failed: ${uploadError.message}` },
         { status: 500 }
@@ -97,7 +96,6 @@ export async function POST(request: Request) {
       .createSignedUrl(fileName, 3600)
 
     if (signError || !data?.signedUrl) {
-      console.error('[Locker Evidence Upload API] Signed URL error:', signError)
       return NextResponse.json(
         { error: `Failed to create signed URL: ${signError?.message ?? 'Unknown error'}` },
         { status: 500 }
@@ -109,7 +107,6 @@ export async function POST(request: Request) {
       evidenceUrl: data.signedUrl,
     })
   } catch (err) {
-    console.error('[Locker Evidence Upload API] Unexpected error:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

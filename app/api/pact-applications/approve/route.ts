@@ -68,7 +68,6 @@ export async function POST(request: Request) {
       .eq('pact_id', pact_id)
 
     if (updateError) {
-      console.error('[Approve Application] Error updating application:', updateError)
       return NextResponse.json(
         { error: updateError.message },
         { status: 500 }
@@ -86,7 +85,6 @@ export async function POST(request: Request) {
       })
 
     if (memberError) {
-      console.error('[Approve Application] Error adding member:', memberError)
       return NextResponse.json(
         { error: memberError.message },
         { status: 500 }
@@ -104,7 +102,6 @@ export async function POST(request: Request) {
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Approve Application] Unexpected error:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

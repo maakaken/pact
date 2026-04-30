@@ -117,9 +117,8 @@ export default function PactOverviewPage() {
     const supabase = createClient();
     setExtraLoading(true);
 
-    const currentUser = user as any;
-    const userId = currentUser.id;
-    const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
+    const userId = user.id;
+    const isAdmin = pact && user ? (pact.created_by === userId || pact.members.some((m) => m.user_id === userId && m.role === 'admin')) : false;
 
     try {
       // Fetch notifications
@@ -234,13 +233,13 @@ export default function PactOverviewPage() {
     fetchExtra();
   }, [fetchExtra]);
 
-  const currentUser = user as any;
+  const currentUser = user;
   const isAdmin = pact && currentUser ? (pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin')) : false;
 
   // Realtime subscriptions for applications, notifications, and members
   useEffect(() => {
     if (!pact || !user) return;
-    const currentUser = user as any;
+    const currentUser = user;
     const isAdmin = pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin');
     if (!isAdmin) return;
     
@@ -331,8 +330,7 @@ export default function PactOverviewPage() {
         }),
       });
       setNudgedUsers((prev) => new Set([...prev, targetUserId]));
-      const currentUser = user as any;
-      const nudgeKey = `nudged_${pactId}_${currentUser.id}`;
+      const nudgeKey = `nudged_${pactId}_${user.id}`;
       localStorage.setItem(nudgeKey, JSON.stringify([...nudgedUsers, targetUserId]));
     } catch (e) {
       console.error('Failed to nudge user:', e);
@@ -459,8 +457,7 @@ export default function PactOverviewPage() {
 
   const fetchPendingGoals = useCallback(async () => {
     if (!pact || !user) return;
-    const currentUser = user as any;
-    const isAdmin = pact.created_by === currentUser.id || pact.members.some((m) => m.user_id === currentUser.id && m.role === 'admin');
+    const isAdmin = pact.created_by === user.id || pact.members.some((m) => m.user_id === user.id && m.role === 'admin');
     if (!isAdmin) return;
     setModerationLoading(true);
     try {
@@ -1011,7 +1008,9 @@ export default function PactOverviewPage() {
                         let proofData = null;
                         try {
                           proofData = notif.data ? JSON.parse(notif.data as string) : null;
-                        } catch { }
+                        } catch (err) {
+                          // Failed to parse notification data, continue with null
+                        }
 
                         const isProofUpload = notif.type === 'proof_upload';
 
@@ -1041,7 +1040,7 @@ export default function PactOverviewPage() {
                                     variant="secondary"
                                     onClick={() => {
                                       const url = proofData.proof_url;
-                                      const ext = url.split('.').pop()?.toLowerCase() || '';
+                                      const ext = url?.split('.').pop()?.toLowerCase() || '';
                                       const detectedType = ext.match(/^(jpg|jpeg|png|gif|webp)$/) ? 'image' :
                                                            ext.match(/^(mp4|webm|mov|avi)$/) ? 'video' :
                                                            ext.match(/^(mp3|wav|ogg|m4a)$/) ? 'audio' : proofData.proof_type;

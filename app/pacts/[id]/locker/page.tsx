@@ -385,7 +385,9 @@ export default function LockerPage() {
                     <div className="space-y-2">
                       {mySubmission.external_links.map((raw, i) => {
                         let link: ExternalLink = { type: 'Other', url: raw };
-                        try { link = JSON.parse(raw); } catch {}
+                        try { link = JSON.parse(raw); } catch (err) {
+                          // Failed to parse external link, use default
+                        }
                         return (
                           <a
                             key={i}

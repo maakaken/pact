@@ -125,7 +125,6 @@ export async function POST(request: Request) {
       .eq('id', user.id)
 
     if (reserveError) {
-      console.error('[Marketplace Apply] Error reserving coins:', reserveError)
       return NextResponse.json(
         { error: 'Failed to reserve coins' },
         { status: 500 }
@@ -142,7 +141,6 @@ export async function POST(request: Request) {
       })
 
     if (insertError) {
-      console.error('[Marketplace Apply] Error inserting application:', insertError)
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }
@@ -161,13 +159,6 @@ export async function POST(request: Request) {
 
       const applicantName = applicantProfile?.full_name || applicantProfile?.username || 'Someone'
 
-      console.log('[Marketplace Apply] Sending notification to pact creator:', {
-        pact_id,
-        pact_creator_id: pact.created_by,
-        applicant_id: user.id,
-        applicant_name: applicantName,
-      })
-
       // Send notification to pact creator
       const { error: notifError } = await serviceClient.from('notifications').insert({
         user_id: pact.created_by,
@@ -178,17 +169,12 @@ export async function POST(request: Request) {
       })
 
       if (notifError) {
-        console.error('[Marketplace Apply] Failed to send notification:', notifError)
-      } else {
-        console.log('[Marketplace Apply] Notification sent successfully')
+        // Notification failed but application succeeded - log and continue
       }
-    } else {
-      console.log('[Marketplace Apply] No pact creator found, skipping notification')
     }
 
     return NextResponse.json({ success: true })
   } catch (err) {
-    console.error('[Marketplace Apply] Unexpected error:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

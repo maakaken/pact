@@ -89,7 +89,7 @@ export async function POST(request: Request) {
       setTimeout(() => reject(new Error('Database operation timed out after 15 seconds')), 15000)
     );
     
-    const { data: pact, error: pactError } = await Promise.race([pactPromise, timeoutPromise]) as any;
+    const { data: pact, error: pactError } = await Promise.race([pactPromise, timeoutPromise]) as { data: any; error: any };
 
     if (pactError) {
       console.error('[pacts/create] DB error on pact insert:', pactError)

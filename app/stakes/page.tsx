@@ -29,8 +29,7 @@ export default function StakesPage() {
   const [totalLost, setTotalLost] = useState(0);
 
   const load = useCallback(async () => {
-    const currentUser = user as any;
-    if (!currentUser) return;
+    if (!user) return;
     try {
       const res = await fetch('/api/stakes');
       const json = await res.json();

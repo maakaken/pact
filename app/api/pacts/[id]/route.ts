@@ -2,6 +2,7 @@ import { NextResponse } from 'next/server'
 import { createClient } from '@supabase/supabase-js'
 import { cookies } from 'next/headers'
 import { createServerClient } from '@supabase/ssr'
+import type { PactMember } from '@/types'
 
 export async function GET(
   request: Request,
@@ -52,13 +53,11 @@ export async function GET(
       )
     }
     
-    const responseData = {
+    return NextResponse.json({
       ...pactResult.data,
-      members: (membersResult.data as any[]) ?? [],
+      members: (membersResult.data as PactMember[]) ?? [],
       currentSprint: sprintResult.data ?? null
-    }
-    
-    return NextResponse.json(responseData)
+    })
     
   } catch (err) {
     console.error('[api/pacts/[id]] Error:', err)

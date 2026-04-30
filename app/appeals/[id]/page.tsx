@@ -31,7 +31,8 @@ export default function AppealStatusPage() {
       setAppeal(appealData);
       const { data: verdictData } = await supabase.from('verdicts').select('*').eq('id', appealData.verdict_id).single();
       setVerdict(verdictData ?? null);
-    } catch {
+    } catch (err) {
+      console.error('[Appeals Page] Failed to load appeal data:', err);
       // Leave empty state
     } finally {
       setLoading(false);

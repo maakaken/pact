@@ -33,7 +33,9 @@ interface ExternalLinkObj {
 function parseLinks(raw: string[] | null): ExternalLinkObj[] {
   if (!raw) return [];
   return raw.map((item) => {
-    try { return JSON.parse(item) as ExternalLinkObj; } catch { return { type: 'Link', url: item }; }
+    try { return JSON.parse(item) as ExternalLinkObj; } catch (err) {
+      return { type: 'Link', url: item };
+    }
   });
 }
 
@@ -429,7 +431,7 @@ export default function VerdictPage() {
                                   >
                                     <FileText size={20} className="text-[#5C6B5E]" />
                                     <span className="text-[9px] text-[#8FA38F] text-center px-1 truncate w-full">
-                                      {url.split('/').pop()}
+                                      {url?.split('/').pop()}
                                     </span>
                                   </a>
                                 );

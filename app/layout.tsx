@@ -4,6 +4,7 @@ import './globals.css';
 import { Toaster } from 'sonner';
 import PrototypeBanner from '@/components/layout/PrototypeBanner';
 import NotificationProviderWrapper from '@/components/providers/NotificationProviderWrapper';
+import { ErrorBoundary } from './components/ui/ErrorBoundary';
 
 const fraunces = Fraunces({
   subsets: ['latin'],
@@ -45,10 +46,12 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
         className="bg-[#F5F7F0] text-[#1B1F1A] antialiased"
         suppressHydrationWarning={true}
       >
-        <NotificationProviderWrapper>
-          <PrototypeBanner />
-          {children}
-        </NotificationProviderWrapper>
+        <ErrorBoundary>
+          <NotificationProviderWrapper>
+            <PrototypeBanner />
+            {children}
+          </NotificationProviderWrapper>
+        </ErrorBoundary>
         <Toaster
           position="top-right"
           toastOptions={{

@@ -26,7 +26,7 @@ export async function POST(request: Request) {
         if (!Array.isArray(parsedExternalLinks)) {
           parsedExternalLinks = null
         }
-      } catch {
+      } catch (err) {
         parsedExternalLinks = null
       }
     }
@@ -98,21 +98,16 @@ export async function POST(request: Request) {
     let publicUrl = '';
 
     try {
-      console.log('[Proof Upload API] Attempting to upload file:', fileName, 'Size:', file.size, 'Type:', file.type)
       const { data: uploadData, error: uploadError } = await serviceClient.storage
         .from('evidence')
         .upload(fileName, file)
 
       if (uploadError) {
-        console.error('[Proof Upload API] Storage upload error:', uploadError)
-        console.error('[Proof Upload API] Error details:', JSON.stringify(uploadError, null, 2))
         return NextResponse.json(
           { error: `Storage upload failed: ${uploadError.message}` },
           { status: 500 }
         )
       }
-
-      console.log('[Proof Upload API] File uploaded successfully')
 
       // Get signed URL (valid for 1 hour)
       const { data, error: signError } = await serviceClient.storage
@@ -120,7 +115,6 @@ export async function POST(request: Request) {
         .createSignedUrl(fileName, 3600) // 1 hour expiry
 
       if (signError || !data?.signedUrl) {
-        console.error('[Proof Upload API] Signed URL error:', signError)
         return NextResponse.json(
           { error: `Failed to create signed URL: ${signError?.message ?? 'Unknown error'}` },
           { status: 500 }
@@ -128,7 +122,6 @@ export async function POST(request: Request) {
       }
       publicUrl = data.signedUrl
     } catch (err) {
-      console.error('[Proof Upload API] Upload exception:', err)
       return NextResponse.json(
         { error: err instanceof Error ? err.message : 'Failed to upload file' },
         { status: 500 }
@@ -157,7 +150,6 @@ export async function POST(request: Request) {
       })
 
     if (insertError) {
-      console.error('[Proof Upload API] Error saving submission:', insertError)
       return NextResponse.json(
         { error: insertError.message },
         { status: 500 }
@@ -170,7 +162,6 @@ export async function POST(request: Request) {
       proof_type: fileType,
     })
   } catch (err) {
-    console.error('[Proof Upload API] Unexpected error:', err)
     return NextResponse.json(
       { error: 'Internal server error' },
       { status: 500 }

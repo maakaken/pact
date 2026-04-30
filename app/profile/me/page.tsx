@@ -69,7 +69,8 @@ export default function MyProfilePage() {
           }
           setPacts((json.pacts as PactHistory[]) ?? []);
         }
-      } catch {
+      } catch (err) {
+        console.error('[Profile Page] Failed to load profile data:', err);
         // Timeout or network error — leave defaults
       } finally {
         clearTimeout(timeout);
@@ -145,7 +146,7 @@ export default function MyProfilePage() {
   };
 
   // Derived display values — safe with null profile
-  const displayName = profile?.full_name ?? profile?.username ?? editData.username ?? userEmail.split('@')[0] ?? 'You';
+  const displayName = profile?.full_name ?? profile?.username ?? editData.username ?? (userEmail?.split('@')[0] ?? 'You');
   const integrityScore = profile?.integrity_score ?? 100;
   const circumference = 2 * Math.PI * 36;
   const dashOffset = circumference - (integrityScore / 100) * circumference;

@@ -132,7 +132,8 @@ export default function LobbyPage() {
           console.error('Failed to fetch notifications:', e);
         }
 
-      } catch {
+      } catch (err) {
+        console.error('[Lobby Page] Failed to load lobby data:', err);
         // Timeout or any error — leave all state as empty defaults
       } finally {
         clearTimeout(timeout);
