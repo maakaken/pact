@@ -2,6 +2,7 @@
 
 import { useEffect, useState, useCallback } from 'react';
 import type { Pact, PactMember, Sprint, Profile } from '@/types';
+import { getCache, setCache, hasCacheConsent, CACHE_KEYS, CACHE_DURATION } from '@/lib/cache';
 
 export interface PactData extends Pact {
   members: (PactMember & { profiles: Profile })[];
@@ -17,6 +18,17 @@ export function usePact(pactId: string | undefined) {
     if (!pactId) { setLoading(false); return; }
     setLoading(true);
     try {
+      // Check cache first if consent is given
+      if (hasCacheConsent()) {
+        const cachedPact = getCache<PactData>(CACHE_KEYS.PACT_DATA(pactId));
+        if (cachedPact) {
+          setError(null);
+          setPact(cachedPact);
+          setLoading(false);
+          return;
+        }
+      }
+      
       const response = await fetch(`/api/pacts/${pactId}`);
       if (!response.ok) {
         setError('Pact not found');
@@ -24,6 +36,11 @@ export function usePact(pactId: string | undefined) {
       }
       const data = await response.json();
       setPact(data);
+      
+      // Cache the fetched data
+      if (hasCacheConsent()) {
+        setCache(CACHE_KEYS.PACT_DATA(pactId), data, CACHE_DURATION.SESSION);
+      }
     } catch (err) {
       setError('Failed to load pact');
     } finally {

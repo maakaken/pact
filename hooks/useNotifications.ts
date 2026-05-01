@@ -4,6 +4,7 @@ import { useEffect, useState, useCallback, useRef } from 'react';
 import { createClient } from '@/lib/supabase/client';
 import type { Notification } from '@/types';
 import type { RealtimeChannel } from '@supabase/supabase-js';
+import { getCache, setCache, hasCacheConsent, CACHE_KEYS, CACHE_DURATION } from '@/lib/cache';
 
 export function useNotifications(userId: string | undefined) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
@@ -14,6 +15,17 @@ export function useNotifications(userId: string | undefined) {
   const fetchNotifications = useCallback(async () => {
     if (!userId || !isMountedRef.current) return;
     const supabase = createClient();
+
+    // Check cache first if consent is given
+    if (hasCacheConsent()) {
+      const cachedNotifications = getCache<Notification[]>(CACHE_KEYS.NOTIFICATIONS(userId));
+      if (cachedNotifications) {
+        setNotifications(cachedNotifications);
+        setUnreadCount(cachedNotifications.filter(n => !n.is_read).length);
+        return;
+      }
+    }
+
     try {
       const { data } = await supabase
         .from('notifications')
@@ -24,7 +36,12 @@ export function useNotifications(userId: string | undefined) {
 
       if (data && isMountedRef.current) {
         setNotifications(data);
-        setUnreadCount(data.filter((n) => !n.is_read).length);
+        setUnreadCount(data.filter((n: Notification) => !n.is_read).length);
+        
+        // Cache: fetched data
+        if (hasCacheConsent()) {
+          setCache(CACHE_KEYS.NOTIFICATIONS(userId), data, CACHE_DURATION.SESSION);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch notifications:', err);
@@ -87,9 +104,17 @@ export function useNotifications(userId: string | undefined) {
     const supabase = createClient();
     try {
       await supabase.from('notifications').update({ is_read: true }).eq('id', id);
-      setNotifications((prev) =>
-        prev.map((n) => (n.id === id ? { ...n, is_read: true } : n))
-      );
+      
+      setNotifications((prev) => {
+        const updated = prev.map((n) => (n.id === id ? { ...n, is_read: true } : n));
+        
+        // Update cache if consent is given
+        if (hasCacheConsent() && userId) {
+          setCache(CACHE_KEYS.NOTIFICATIONS(userId), updated);
+        }
+        
+        return updated;
+      });
       setUnreadCount((prev) => Math.max(0, prev - 1));
     } catch (err) {
       console.error('Failed to mark notification as read:', err);
@@ -105,7 +130,17 @@ export function useNotifications(userId: string | undefined) {
         .update({ is_read: true })
         .eq('user_id', userId)
         .eq('is_read', false);
-      setNotifications((prev) => prev.map((n) => ({ ...n, is_read: true })));
+      
+      setNotifications((prev) => {
+        const updated = prev.map((n) => ({ ...n, is_read: true }));
+        
+        // Update cache if consent is given
+        if (hasCacheConsent()) {
+          setCache(CACHE_KEYS.NOTIFICATIONS(userId), updated);
+        }
+        
+        return updated;
+      });
       setUnreadCount(0);
     } catch (err) {
       console.error('Failed to mark all notifications as read:', err);

@@ -18,6 +18,7 @@ import BottomNav from '@/components/layout/BottomNav';
 import Header from '@/components/layout/Header';
 import { formatCurrency } from '@/lib/utils';
 import type { Profile, Pact, PactMember } from '@/types';
+import { clearCache } from '@/lib/cache';
 
 const INTERESTS = ['Coding', 'Fitness', 'Reading', 'Finance', 'Wellness', 'Creative Writing', 'Languages', 'Music', 'Cooking', 'Meditation'];
 
@@ -250,6 +251,22 @@ export default function MyProfilePage() {
                 <div className="flex gap-3">
                   <Button onClick={saveProfile} loading={saving} className="flex-1">Save Changes</Button>
                   {profile && <Button onClick={() => setEditing(false)} variant="secondary">Cancel</Button>}
+                </div>
+                <div className="mt-4 pt-4 border-t border-[#E5E7EB]">
+                  <Button 
+                    onClick={async () => {
+                      try {
+                        await clearCache();
+                        toast.success('Cache cleared successfully');
+                      } catch (error) {
+                        toast.error('Failed to clear cache');
+                      }
+                    }} 
+                    variant="secondary" 
+                    className="w-full"
+                  >
+                    Clear Cache
+                  </Button>
                 </div>
               </div>
             </Card>
