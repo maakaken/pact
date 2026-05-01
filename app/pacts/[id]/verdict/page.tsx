@@ -158,18 +158,30 @@ export default function VerdictPage() {
   useEffect(() => {
     if (!pact?.currentSprint) return;
     const supabase = createClient();
+    let isSubscribed = true;
+    const sprintId = pact.currentSprint.id;
+
+    // Use unique channel name to avoid collisions
+    const uniqueId = Math.random().toString(36).slice(2, 9);
 
     realtimeRef.current = supabase
-      .channel(`votes:${pact.currentSprint.id}`)
+      .channel(`votes:${sprintId}:${uniqueId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'votes', filter: `sprint_id=eq.${pact.currentSprint.id}` },
-        () => { fetchData(); }
+        { event: '*', schema: 'public', table: 'votes', filter: `sprint_id=eq.${sprintId}` },
+        () => { if (isSubscribed) fetchData(); }
       )
       .subscribe();
 
-    return () => { realtimeRef.current?.unsubscribe(); };
-  }, [pact?.currentSprint, fetchData]);
+    isSubscribed = true;
+
+    return () => { 
+      isSubscribed = false;
+      if (realtimeRef.current) {
+        supabase.removeChannel(realtimeRef.current);
+      }
+    };
+  }, [pact?.currentSprint?.id]);
 
   const handleSelectVote = (targetUserId: string, decision: VoteDecision) => {
     setPendingVotes((prev) => ({ ...prev, [targetUserId]: decision }));

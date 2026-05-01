@@ -47,13 +47,20 @@ export default function AppealStatusPage() {
   useEffect(() => {
     if (!id) return;
     const supabase = createClient();
-    // eslint-disable-next-line @typescript-eslint/no-explicit-any
-    const channel = supabase.channel('appeal-' + id) as any;
+    let isSubscribed = true;
+    const uniqueId = Math.random().toString(36).slice(2, 9);
+    const channelName = `appeal-${id}-${uniqueId}`;
+
+    const channel = supabase.channel(channelName);
     channel
       .on('postgres_changes', { event: 'UPDATE', schema: 'public', table: 'appeals', filter: `id=eq.${id}` },
-        (payload: { new: Appeal }) => { setAppeal(payload.new); })
+        (payload: { new: Appeal }) => { if (isSubscribed) setAppeal(payload.new); })
       .subscribe();
-    return () => { supabase.removeChannel(channel); };
+    isSubscribed = true;
+    return () => { 
+      isSubscribed = false;
+      supabase.removeChannel(channel); 
+    };
   }, [id]);
 
   if (!loading && !appeal) {

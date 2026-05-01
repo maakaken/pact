@@ -25,13 +25,10 @@ export function useRealtime({ table, filter, onInsert, onUpdate, onDelete }: Rea
 
   useEffect(() => {
     const supabase = createClient();
-    const channelName = `realtime-${table}-${filter ?? 'all'}`;
+    // Use a unique channel name for each hook instance to avoid collisions and "already subscribed" errors
+    const uniqueId = Math.random().toString(36).slice(2, 9);
+    const channelName = `realtime-${table}-${filter ?? 'all'}-${uniqueId}`;
 
-    // Remove any existing subscription with this name first
-    const existingChannel = supabase.channel(channelName);
-    supabase.removeChannel(existingChannel);
-
-    // Create a fresh channel
     // eslint-disable-next-line @typescript-eslint/no-explicit-any
     const channel = supabase.channel(channelName) as any;
 

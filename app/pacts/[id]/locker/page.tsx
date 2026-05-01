@@ -150,20 +150,30 @@ export default function LockerPage() {
   useEffect(() => {
     if (!pact?.currentSprint) return;
     const supabase = createClient();
+    let isSubscribed = true;
+    const sprintId = pact.currentSprint.id;
+
+    // Use unique channel name to avoid collisions
+    const uniqueId = Math.random().toString(36).slice(2, 9);
 
     realtimeRef.current = supabase
-      .channel(`submissions:${pact.currentSprint.id}`)
+      .channel(`submissions:${sprintId}:${uniqueId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'submissions', filter: `sprint_id=eq.${pact.currentSprint.id}` },
-        () => { fetchData(); }
+        { event: '*', schema: 'public', table: 'submissions', filter: `sprint_id=eq.${sprintId}` },
+        () => { if (isSubscribed) fetchData(); }
       )
       .subscribe();
 
+    isSubscribed = true;
+
     return () => {
-      realtimeRef.current?.unsubscribe();
+      isSubscribed = false;
+      if (realtimeRef.current) {
+        supabase.removeChannel(realtimeRef.current);
+      }
     };
-  }, [pact?.currentSprint, fetchData]);
+  }, [pact?.currentSprint?.id]);
 
   const handleSubmit = async () => {
     if (!user || !pact?.currentSprint) return;

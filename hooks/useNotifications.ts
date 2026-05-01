@@ -39,11 +39,9 @@ export function useNotifications(userId: string | undefined) {
     if (!userId) return;
 
     const supabase = createClient();
-    const channelName = 'notifications-' + userId;
-
-    // Remove any existing subscription with this name first
-    const existingChannel = supabase.channel(channelName);
-    supabase.removeChannel(existingChannel);
+    // Use a unique channel name to avoid collisions and "already subscribed" errors
+    const uniqueId = Math.random().toString(36).slice(2, 9);
+    const channelName = `notifications-${userId}-${uniqueId}`;
 
     // Now create a fresh channel and set up callbacks BEFORE subscribing
     // eslint-disable-next-line @typescript-eslint/no-explicit-any

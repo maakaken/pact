@@ -197,7 +197,7 @@ export default function PactOverviewPage() {
           .eq('sprint_id', sprintData.id);
 
         const subMap: Record<string, boolean> = {};
-        allSubs?.forEach((s) => { subMap[s.user_id] = true; });
+        allSubs?.forEach((s: { user_id: string }) => { subMap[s.user_id] = true; });
         setMemberSubmissions(subMap);
 
         // Fetch all members' goals for current sprint
@@ -208,7 +208,7 @@ export default function PactOverviewPage() {
           .eq('pact_id', pactId);
 
         const goalMap: Record<string, Goal> = {};
-        allGoals?.forEach((g) => { goalMap[g.user_id] = g; });
+        allGoals?.forEach((g: Goal) => { goalMap[g.user_id] = g; });
         setMemberGoals(goalMap);
       }
 
@@ -244,10 +244,14 @@ export default function PactOverviewPage() {
     if (!isAdmin) return;
     
     const supabase = createClient();
+    let isSubscribed = true;
+
+    // Use unique channel names for each subscription attempt
+    const uniqueId = Math.random().toString(36).slice(2, 9);
 
     // Subscribe to pact_applications changes
     const applicationsChannel = supabase
-      .channel(`pact_applications:${pactId}`)
+      .channel(`pact_applications:${pactId}:${uniqueId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pact_applications', filter: `pact_id=eq.${pactId}` },
@@ -257,7 +261,7 @@ export default function PactOverviewPage() {
 
     // Subscribe to notifications changes
     const notificationsChannel = supabase
-      .channel(`notifications:${pactId}`)
+      .channel(`notifications:${pactId}:${uniqueId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'notifications', filter: `pact_id=eq.${pactId}` },
@@ -267,36 +271,43 @@ export default function PactOverviewPage() {
 
     // Subscribe to pact_members changes
     const membersChannel = supabase
-      .channel(`pact_members:${pactId}`)
+      .channel(`pact_members:${pactId}:${uniqueId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pact_members', filter: `pact_id=eq.${pactId}` },
         () => { 
-          // Refresh pact data to get updated members
-          window.location.reload();
+          if (isSubscribed) {
+            // Refresh pact data to get updated members
+            window.location.reload();
+          }
         }
       )
       .subscribe();
 
     // Subscribe to sprints changes
     const sprintsChannel = supabase
-      .channel(`sprints:${pactId}`)
+      .channel(`sprints:${pactId}:${uniqueId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'sprints', filter: `pact_id=eq.${pactId}` },
         () => { 
-          window.location.reload();
+          if (isSubscribed) {
+            window.location.reload();
+          }
         }
       )
       .subscribe();
 
+    isSubscribed = true;
+
     return () => {
-      applicationsChannel.unsubscribe();
-      notificationsChannel.unsubscribe();
-      membersChannel.unsubscribe();
-      sprintsChannel.unsubscribe();
+      isSubscribed = false;
+      supabase.removeChannel(applicationsChannel);
+      supabase.removeChannel(notificationsChannel);
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(sprintsChannel);
     };
-  }, [pact, pactId, user, fetchExtra]);
+  }, [pactId, user?.id]);
 
   const fetchResults = async () => {
     setResultsLoading(true);
@@ -506,7 +517,7 @@ export default function PactOverviewPage() {
       
       if (res.ok) {
         alert('Successfully exited the pact');
-        router.refresh();
+        router.push('/lobby');
       } else {
         alert(json.error || 'Failed to exit pact');
       }

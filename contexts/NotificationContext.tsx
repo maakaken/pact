@@ -58,12 +58,8 @@ export function NotificationProvider({ children, userId }: NotificationProviderP
     if (!userId) return;
 
     const supabase = createClient();
-    const channelName = 'notifications-' + userId;
-
-    // Clean up existing channel if any
-    if (channel) {
-      supabase.removeChannel(channel);
-    }
+    const uniqueId = Math.random().toString(36).slice(2, 9);
+    const channelName = `notifications-${userId}-${uniqueId}`;
 
     // Create and subscribe to new channel
     const newChannel = supabase

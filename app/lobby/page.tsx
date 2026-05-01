@@ -151,43 +151,48 @@ export default function LobbyPage() {
   // Realtime subscriptions for lobby updates
   useEffect(() => {
     const supabase = createClient();
-    
+    let notificationsChannel: any = null;
+    let pactMembersChannel: any = null;
+    let isMounted = true;
+
     // Get user ID for subscriptions
     const getUserId = async () => {
       const { data: { session } } = await supabase.auth.getSession();
       return session?.user?.id;
     };
 
-    let userId: string | undefined;
-    let notificationsChannel: any = null;
-    let pactMembersChannel: any = null;
-
     const setupSubscriptions = async () => {
-      userId = await getUserId();
-      if (!userId) return;
+      const userId = await getUserId();
+      if (!userId || !isMounted) return;
 
-      // Subscribe to notifications for this user
+      // Use unique channel names to avoid collisions with other components or stale subscriptions
+      // and ensure we add listeners BEFORE calling subscribe.
+      const notificationsChannelName = `notifications:${userId}:${Math.random().toString(36).slice(2, 9)}`;
       notificationsChannel = supabase
-        .channel(`notifications:${userId}`)
+        .channel(notificationsChannelName)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'notifications', filter: `user_id=eq.${userId}` },
           () => { 
-            // Reload the page to refresh all data
-            window.location.reload();
+            if (isMounted) {
+              // Reload the page to refresh all data
+              window.location.reload();
+            }
           }
         )
         .subscribe();
 
-      // Subscribe to pact_members for this user (when they join/leave pacts)
+      const pactMembersChannelName = `pact_members:${userId}:${Math.random().toString(36).slice(2, 9)}`;
       pactMembersChannel = supabase
-        .channel(`pact_members:${userId}`)
+        .channel(pactMembersChannelName)
         .on(
           'postgres_changes',
           { event: '*', schema: 'public', table: 'pact_members', filter: `user_id=eq.${userId}` },
           () => { 
-            // Reload the page to refresh pact list
-            window.location.reload();
+            if (isMounted) {
+              // Reload the page to refresh pact list
+              window.location.reload();
+            }
           }
         )
         .subscribe();
@@ -196,8 +201,13 @@ export default function LobbyPage() {
     setupSubscriptions();
 
     return () => {
-      notificationsChannel?.unsubscribe();
-      pactMembersChannel?.unsubscribe();
+      isMounted = false;
+      if (notificationsChannel) {
+        supabase.removeChannel(notificationsChannel);
+      }
+      if (pactMembersChannel) {
+        supabase.removeChannel(pactMembersChannel);
+      }
     };
   }, []);
 

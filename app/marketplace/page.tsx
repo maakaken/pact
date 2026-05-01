@@ -84,46 +84,56 @@ export default function MarketplacePage() {
   useEffect(() => {
     if (!user) return;
     const supabase = createClient();
+    let isSubscribed = true;
+    const userId = user.id;
+
+    // Use unique channel names for each subscription attempt
+    const uniqueId = Math.random().toString(36).slice(2, 9);
 
     // Subscribe to pact_applications changes (to update applied status)
     const applicationsChannel = supabase
-      .channel(`pact_applications:${user.id}`)
+      .channel(`pact_applications:${userId}:${uniqueId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'pact_applications', filter: `user_id=eq.${user.id}` },
-        () => { loadUserState(); }
+        { event: '*', schema: 'public', table: 'pact_applications', filter: `user_id=eq.${userId}` },
+        () => { if (isSubscribed) loadUserState(); }
       )
       .subscribe();
 
     // Subscribe to pact_members changes (to update member status)
     const membersChannel = supabase
-      .channel(`pact_members:${user.id}`)
+      .channel(`pact_members:${userId}:${uniqueId}`)
       .on(
         'postgres_changes',
-        { event: '*', schema: 'public', table: 'pact_members', filter: `user_id=eq.${user.id}` },
+        { event: '*', schema: 'public', table: 'pact_members', filter: `user_id=eq.${userId}` },
         () => { 
-          loadUserState();
-          load();
+          if (isSubscribed) {
+            loadUserState();
+            load();
+          }
         }
       )
       .subscribe();
 
     // Subscribe to pacts changes (to update pact list)
     const pactsChannel = supabase
-      .channel('pacts:marketplace')
+      .channel(`pacts:marketplace:${uniqueId}`)
       .on(
         'postgres_changes',
         { event: '*', schema: 'public', table: 'pacts' },
-        () => { load(); }
+        () => { if (isSubscribed) load(); }
       )
       .subscribe();
 
+    isSubscribed = true;
+
     return () => {
-      applicationsChannel.unsubscribe();
-      membersChannel.unsubscribe();
-      pactsChannel.unsubscribe();
+      isSubscribed = false;
+      supabase.removeChannel(applicationsChannel);
+      supabase.removeChannel(membersChannel);
+      supabase.removeChannel(pactsChannel);
     };
-  }, [user, load, loadUserState]);
+  }, [user?.id]);
 
   const handleApply = async (pact: PactWithMembers) => {
     if (!user) { router.push('/login?next=/marketplace'); return; }
