@@ -74,13 +74,14 @@ export function useUser() {
 
     // Listen for auth state changes to keep user in sync
     const supabase = createClient();
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: any) => {
-      console.log('[useUser] Auth state change:', event, session?.user?.id);
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event: string, session: unknown) => {
+      const typedSession = session as { user?: { id: string } } | null;
+      console.log('[useUser] Auth state change:', event, typedSession?.user?.id);
       if (mounted) {
-        if (session?.user) {
-          setUser(session.user);
+        if (typedSession?.user) {
+          setUser(typedSession.user as any);
           
-          const uid = session.user.id;
+          const uid = typedSession.user.id;
           if (hasCacheConsent()) {
             const cached = getCache<Profile>(CACHE_KEYS.USER_PROFILE);
             if (cached) {

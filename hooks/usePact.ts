@@ -41,7 +41,7 @@ export function usePact(pactId: string | undefined) {
       if (hasCacheConsent()) {
         setCache(CACHE_KEYS.PACT_DATA(pactId), data, CACHE_DURATION.SESSION);
       }
-    } catch (err) {
+    } catch (_err) {
       setError('Failed to load pact');
     } finally {
       setLoading(false);

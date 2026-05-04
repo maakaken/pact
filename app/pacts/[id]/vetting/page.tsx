@@ -110,7 +110,7 @@ export default function VettingPage({ params }: { params: Promise<{ id: string }
         .eq('pact_id', pactId)
         .eq('sprint_number', pact.current_sprint)
         .eq('voter_id', user.id);
-      setMyVotes(Object.fromEntries((votes ?? []).map((v) => [v.goal_id, v.decision])));
+      setMyVotes(Object.fromEntries((votes ?? []).map((v: { goal_id: string; decision: string }) => [v.goal_id, v.decision])));
 
       const mine = goals.find((g) => g.user_id === user.id) ?? null;
       const team = goals.filter((g) => g.user_id !== user.id);

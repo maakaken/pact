@@ -75,7 +75,7 @@ export function NotificationProvider({ children, userId }: NotificationProviderP
           setUnreadCount((prev) => prev + 1);
         }
       })
-      .subscribe((status) => {
+      .subscribe((status: 'CHANNEL_ERROR' | 'TIMED_OUT' | 'CLOSED' | 'SUBSCRIBED' | 'INTERNAL_ERROR') => {
         if (status === 'CHANNEL_ERROR' || status === 'TIMED_OUT' || status === 'CLOSED') {
           console.warn(`Notification subscription error for ${userId}:`, status);
         }

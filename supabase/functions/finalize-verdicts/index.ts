@@ -4,18 +4,23 @@ import { createClient } from '@supabase/supabase-js';
 // Scheduled via pg_cron to run every 15 minutes
 
 // Validate required environment variables
+// @ts-ignore - Deno global
 const supabaseUrl = Deno.env.get('SUPABASE_URL');
+// @ts-ignore - Deno global
 const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
 if (!supabaseUrl || !supabaseServiceKey) {
   throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
 }
 
-const supabase = createClient(supabaseUrl, supabaseServiceKey);
+const _supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+// @ts-ignore - Deno global
 Deno.serve(async () => {
   try {
+    // @ts-ignore - Deno global
     const appUrl = Deno.env.get('APP_URL') ?? 'http://localhost:3000';
+    // @ts-ignore - Deno global
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
 
     if (!serviceKey) {
