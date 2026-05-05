@@ -1,27 +1,24 @@
-import { createClient } from '@supabase/supabase-js';
-
 // Supabase Edge Function: finalize-verdicts
 // Scheduled via pg_cron to run every 15 minutes
+/// <reference path="../types.d.ts" />
 
-// Validate required environment variables
-// @ts-ignore - Deno global
-const supabaseUrl = Deno.env.get('SUPABASE_URL');
-// @ts-ignore - Deno global
-const supabaseServiceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
-
-if (!supabaseUrl || !supabaseServiceKey) {
-  throw new Error('Missing required environment variables: SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY');
-}
-
-const _supabase = createClient(supabaseUrl, supabaseServiceKey);
-
-// @ts-ignore - Deno global
 Deno.serve(async () => {
   try {
-    // @ts-ignore - Deno global
-    const appUrl = Deno.env.get('APP_URL') ?? 'http://localhost:3000';
-    // @ts-ignore - Deno global
+    const rawAppUrl = Deno.env.get('APP_URL');
     const serviceKey = Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+
+    let appUrl: string;
+    if (!rawAppUrl) {
+      const isDevelopment = Deno.env.get('NODE_ENV') === 'development';
+      if (isDevelopment) {
+        console.warn('APP_URL environment variable not set, using localhost fallback');
+        appUrl = 'http://localhost:3000';
+      } else {
+        throw new Error('APP_URL environment variable is required in production');
+      }
+    } else {
+      appUrl = rawAppUrl;
+    }
 
     if (!serviceKey) {
       throw new Error('Missing SUPABASE_SERVICE_ROLE_KEY for authorization');

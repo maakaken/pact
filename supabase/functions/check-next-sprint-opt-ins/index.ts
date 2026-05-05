@@ -1,15 +1,13 @@
-// @ts-ignore - Deno-specific modules
+// @ts-expect-error - Deno-specific module
 import { serve } from 'https://deno.land/std@0.168.0/http/server.ts'
-// @ts-ignore - Deno-specific modules  
+// @ts-expect-error - Deno-specific module
 import { createClient } from 'https://esm.sh/@supabase/supabase-js@2'
 
 serve(async (_req: Request) => {
   try {
     const supabase = createClient(
-      // @ts-ignore - Deno global
-      Deno.env.get('SUPABASE_URL') ?? '',
-      // @ts-ignore - Deno global
-      Deno.env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
+      (Deno as any).env.get('SUPABASE_URL') ?? '',
+      (Deno as any).env.get('SUPABASE_SERVICE_ROLE_KEY') ?? ''
     )
 
     // Find all next_sprint_opt_in notifications older than 7 days
