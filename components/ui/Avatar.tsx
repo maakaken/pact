@@ -1,4 +1,5 @@
 import Image from 'next/image';
+import { useState } from 'react';
 import { getInitials } from '@/lib/utils';
 import { cn } from '@/lib/utils';
 
@@ -21,6 +22,7 @@ const sizes = {
 export default function Avatar({ src, name, size = 'md', className, ring = true }: AvatarProps) {
   const { px, text } = sizes[size];
   const initials = getInitials(name);
+  const [imageError, setImageError] = useState(false);
 
   return (
     <div
@@ -32,13 +34,15 @@ export default function Avatar({ src, name, size = 'md', className, ring = true 
       )}
       style={{ width: px, height: px }}
     >
-      {src ? (
+      {src && !imageError ? (
         <Image
           src={src}
           alt={name ?? 'Avatar'}
           width={px}
           height={px}
           className="object-cover w-full h-full"
+          onError={() => setImageError(true)}
+          unoptimized={true}
         />
       ) : (
         <span className={cn(text, 'font-semibold text-[#2D6A4F] select-none')}>

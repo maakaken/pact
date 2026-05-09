@@ -62,7 +62,19 @@ export async function POST(request: NextRequest) {
       for (const sprint of verdictSprints ?? []) {
         try {
           await calculateVerdicts(sprint.id);
-          results.push({ sprint_id: sprint.id, status: 'finalized' });
+          
+          // Update pact status to completed to match force-end-voting behavior
+          const { error: updatePactError } = await supabase
+            .from('pacts')
+            .update({ status: 'completed' })
+            .eq('id', sprint.pact_id);
+
+          if (updatePactError) {
+            console.error('Error updating pact to completed:', updatePactError);
+            results.push({ sprint_id: sprint.id, status: 'error', error: String(updatePactError) });
+          } else {
+            results.push({ sprint_id: sprint.id, status: 'finalized' });
+          }
         } catch (err) {
           results.push({ sprint_id: sprint.id, status: 'error', error: String(err) });
         }

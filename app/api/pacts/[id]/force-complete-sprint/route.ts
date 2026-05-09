@@ -116,6 +116,24 @@ export async function POST(
       )
     }
 
+    // Send verdict_open notifications to all pact members (matching timer-based behavior)
+    const { data: allMembers } = await serviceClient
+      .from('pact_members')
+      .select('user_id')
+      .eq('pact_id', pactId)
+      .eq('status', 'active')
+
+    if (allMembers) {
+      const notifications = allMembers.map(m => ({
+        user_id: m.user_id,
+        type: 'verdict_open',
+        title: 'Verdict Phase Open',
+        body: 'The sprint has ended. Review submissions and cast your votes.',
+        pact_id: pactId,
+      }))
+      await serviceClient.from('notifications').insert(notifications)
+    }
+
     return NextResponse.json({ success: true })
   } catch (err) {
     console.error('[Force Complete Sprint] Unexpected error:', err)
