@@ -5,10 +5,10 @@ import { createServerClient } from '@supabase/ssr';
 
 export async function POST(
   request: NextRequest,
-  { params }: { params: { id: string } }
+  { params }: { params: Promise<{ id: string }> }
 ) {
   try {
-    const invitation_id = params.id;
+    const { id: invitation_id } = await params;
 
     // Verify user is authenticated
     const cookieStore = await cookies();
