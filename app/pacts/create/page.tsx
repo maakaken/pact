@@ -16,11 +16,23 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import Avatar from '@/components/ui/Avatar';
 import { toast } from 'sonner';
 import { cn, getInitials } from '@/lib/utils';
+import UserTagInput from '@/components/ui/UserTagInput';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 type SprintType = 'weekly' | 'monthly' | 'custom';
 type Visibility = 'private' | 'public';
 type Category = 'Coding' | 'Fitness' | 'Learning' | 'Finance' | 'Wellness' | 'Creative' | 'Other';
+
+interface InviteTag {
+  id: string;
+  value: string;
+  type: 'username' | 'email';
+  status: 'verifying' | 'valid' | 'invalid';
+  profile?: {
+    full_name: string | null;
+    avatar_url: string | null;
+  };
+}
 
 interface WizardFormValues {
   name: string;
@@ -99,9 +111,7 @@ function TogglePair<T extends string>({
 export default function CreatePactPage() {
   const router = useRouter();
   const [step, setStep] = useState(1);
-  const [inviteEmails, setInviteEmails] = useState<string[]>([]);
-  const [emailInput, setEmailInput] = useState('');
-  const [emailError, setEmailError] = useState('');
+  const [inviteTags, setInviteTags] = useState<InviteTag[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [coinBalance, setCoinBalance] = useState<number>(0);
 
@@ -155,22 +165,6 @@ export default function CreatePactPage() {
     };
     fetchBalance();
   }, [router]);
-
-  // ── Email helpers ──────────────────────────────────────────────────────────
-  const addEmail = () => {
-    const trimmed = emailInput.trim().toLowerCase();
-    if (!trimmed) return;
-    const isValid = /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed);
-    if (!isValid) { setEmailError('Enter a valid email address'); return; }
-    if (inviteEmails.includes(trimmed)) { setEmailError('Email already added'); return; }
-    setInviteEmails((prev) => [...prev, trimmed]);
-    setEmailInput('');
-    setEmailError('');
-  };
-
-  const removeEmail = (email: string) => {
-    setInviteEmails((prev) => prev.filter((e) => e !== email));
-  };
 
   // ── Step navigation ────────────────────────────────────────────────────────
   const next = async () => {
@@ -287,17 +281,22 @@ export default function CreatePactPage() {
         return;
       }
 
-      // ── Step 2: Send invitations if any emails were added ────────────────
-      if (inviteEmails.length > 0) {
+      // ── Step 2: Send invitations ────────────────────────────────────────
+      const validTags = inviteTags.filter(t => t.status === 'valid');
+      if (validTags.length > 0) {
         try {
-          console.log('[launch] Sending invitations to:', inviteEmails);
+          const emails = validTags.filter(t => t.type === 'email').map(t => t.value);
+          const usernames = validTags.filter(t => t.type === 'username').map(t => t.value);
+          
+          console.log('[launch] Sending invitations to:', { emails, usernames });
           
           const invRes = await fetch('/api/invitations/send', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({
               pact_id: pactId,
-              emails: inviteEmails,
+              emails,
+              usernames,
             }),
           });
 
@@ -306,12 +305,12 @@ export default function CreatePactPage() {
           if (!invRes.ok) {
             const invJson = await invRes.json().catch(() => ({}));
             console.error('[launch] Invitation failed:', invJson);
-            // Pact was created — don't block navigation, just warn
             toast.error(`Invitations failed: ${invJson.error || invRes.status}`);
           } else {
             const successData = await invRes.json();
             console.log('[launch] Invitation success:', successData);
-            toast.success(`Pact created & ${inviteEmails.length} invitation${inviteEmails.length > 1 ? 's' : ''} sent!`);
+            const invitedCount = Number(successData?.invitedCount) || 0;
+            toast.success(`Pact created & ${invitedCount} invitation(s) sent!`);
           }
         } catch (err) {
           console.error('[launch] Invitation request error:', err);
@@ -500,50 +499,28 @@ export default function CreatePactPage() {
           {step === 2 && (
             <Card className="space-y-6">
               <div>
-                <label className="text-sm font-medium text-[#1B1F1A] block mb-2">Invite by Email</label>
-                <div className="flex gap-2">
-                  <input
-                    type="email"
-                    value={emailInput}
-                    onChange={(e) => { setEmailInput(e.target.value); setEmailError(''); }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); addEmail(); } }}
-                    placeholder="member@example.com"
-                    className={cn(
-                      'flex-1 rounded-[10px] border border-[#E0EBE1] px-4 py-3 text-sm text-[#1B1F1A]',
-                      'bg-white placeholder:text-[#8FA38F]',
-                      'focus:outline-none focus:border-[#2D6A4F] focus:ring-3 focus:ring-[rgba(45,106,79,0.12)]',
-                      'transition-all duration-150',
-                      emailError && 'border-[#E07A5F]'
-                    )}
-                  />
-                  <Button type="button" onClick={addEmail} size="sm">
-                    Add
-                  </Button>
-                </div>
-                {emailError && <p className="text-xs text-[#E07A5F] mt-1">{emailError}</p>}
-
-                {inviteEmails.length > 0 && (
-                  <div className="mt-3 flex flex-wrap gap-2">
-                    {inviteEmails.map((email) => (
-                      <Chip
-                        key={email}
-                        label={email}
-                        onRemove={() => removeEmail(email)}
-                      />
-                    ))}
-                  </div>
-                )}
+                <label className="text-sm font-medium text-[#1B1F1A] block mb-2">Invite Members</label>
+                <UserTagInput 
+                  tags={inviteTags} 
+                  setTags={setInviteTags} 
+                  placeholder="Type usernames or emails (comma/space to add)" 
+                />
+                <p className="text-xs text-[#8FA38F] mt-2">
+                  Enter multiple usernames or emails. Valid usernames will show the user's avatar.
+                </p>
               </div>
 
               {/* Preview avatars */}
-              {inviteEmails.length > 0 && (
+              {inviteTags.some(t => t.status === 'valid') && (
                 <div>
                   <label className="text-sm font-medium text-[#1B1F1A] block mb-3">Invited Members Preview</label>
                   <div className="flex flex-wrap gap-3">
-                    {inviteEmails.map((email) => (
-                      <div key={email} className="flex flex-col items-center gap-1.5">
-                        <Avatar name={email} size="md" />
-                        <span className="text-[10px] text-[#5C6B5E] max-w-[64px] truncate text-center">{email.split('@')[0]}</span>
+                    {inviteTags.filter(t => t.status === 'valid').map((tag) => (
+                      <div key={tag.id} className="flex flex-col items-center gap-1.5">
+                        <Avatar name={tag.value} src={tag.profile?.avatar_url} size="md" />
+                        <span className="text-[10px] text-[#5C6B5E] max-w-[64px] truncate text-center">
+                          {tag.profile?.full_name || tag.value.split('@')[0]}
+                        </span>
                       </div>
                     ))}
                   </div>
@@ -707,14 +684,14 @@ export default function CreatePactPage() {
                     <p className="text-[11px] text-[#8FA38F] uppercase tracking-wider font-medium">Invited Members</p>
                     <span className="text-xs text-[#5C6B5E]">Max: {maxMembers}</span>
                   </div>
-                  {inviteEmails.length === 0 ? (
+                  {inviteTags.filter(t => t.status === 'valid').length === 0 ? (
                     <p className="text-xs text-[#8FA38F]">No members invited yet — you can invite after launch too.</p>
                   ) : (
                     <div className="flex flex-wrap gap-2">
-                      {inviteEmails.map((email) => (
-                        <div key={email} className="flex items-center gap-2 bg-white border border-[#E0EBE1] rounded-full px-3 py-1">
-                          <Avatar name={email} size="xs" ring={false} />
-                          <span className="text-xs text-[#1B1F1A]">{email}</span>
+                      {inviteTags.filter(t => t.status === 'valid').map((tag) => (
+                        <div key={tag.id} className="flex items-center gap-2 bg-white border border-[#E0EBE1] rounded-full px-3 py-1">
+                          <Avatar name={tag.value} src={tag.profile?.avatar_url} size="xs" ring={false} />
+                          <span className="text-xs text-[#1B1F1A]">{tag.profile?.full_name || tag.value}</span>
                         </div>
                       ))}
                     </div>

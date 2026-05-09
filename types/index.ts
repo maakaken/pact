@@ -40,9 +40,11 @@ export interface Invitation {
   id: string;
   pact_id: string;
   invited_by: string | null;
+  invited_user_id: string | null;
   email: string | null;
   token: string;
   status: 'pending' | 'accepted' | 'declined' | 'expired';
+  invitation_type: 'email' | 'username';
   created_at: string;
   expires_at: string;
 }

@@ -1,8 +1,8 @@
 'use client';
 
-import { useEffect } from 'react';
+import { useEffect, useState } from 'react';
 import { useRouter } from 'next/navigation';
-import { Bell, CheckCheck } from 'lucide-react';
+import { Bell, CheckCheck, Loader2 } from 'lucide-react';
 import Link from 'next/link';
 import { formatDistanceToNow, isToday, isYesterday } from 'date-fns';
 import { useUser } from '@/hooks/useUser';
@@ -12,6 +12,7 @@ import Button from '@/components/ui/Button';
 import Sidebar from '@/components/layout/Sidebar';
 import BottomNav from '@/components/layout/BottomNav';
 import Header from '@/components/layout/Header';
+import { toast } from 'sonner';
 import type { Notification } from '@/types';
 
 const notifIcon: Record<Notification['type'], string> = {
@@ -69,38 +70,117 @@ export default function NotificationsPage() {
   const router = useRouter();
   const { user, loading: authLoading } = useUser();
   const { notifications, markRead, markAllRead } = useNotificationContext();
+  const [processingId, setProcessingId] = useState<string | null>(null);
 
   // Auth guard removed - server-side auth handles it
 
   const groups = groupByDate(notifications);
 
   const handleAcceptNextSprint = async (notifId: string) => {
+    setProcessingId(notifId);
     try {
       const res = await fetch(`/api/notifications/${notifId}/accept-next-sprint`, { method: 'POST' });
       if (res.ok) {
         markRead(notifId);
+        toast.success('Joined next sprint!');
       } else {
         const json = await res.json();
-        alert(json.error || 'Failed to accept next sprint');
+        toast.error(json.error || 'Failed to accept next sprint');
       }
     } catch (e) {
       console.error('Failed to accept next sprint:', e);
-      alert('Failed to accept next sprint');
+      toast.error('Failed to accept next sprint');
+    } finally {
+      setProcessingId(null);
     }
   };
 
   const handleExitPact = async (notifId: string) => {
+    setProcessingId(notifId);
     try {
       const res = await fetch(`/api/notifications/${notifId}/exit-pact`, { method: 'POST' });
       if (res.ok) {
         markRead(notifId);
+        toast.success('Exited pact');
       } else {
         const json = await res.json();
-        alert(json.error || 'Failed to exit pact');
+        toast.error(json.error || 'Failed to exit pact');
       }
     } catch (e) {
       console.error('Failed to exit pact:', e);
-      alert('Failed to exit pact');
+      toast.error('Failed to exit pact');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleAcceptInvite = async (notif: Notification) => {
+    let data: { invitation_id?: string; token?: string } = {};
+    try {
+      data = notif.data ? JSON.parse(notif.data) : {};
+    } catch (e) {
+      console.warn('Failed to parse notification data:', e);
+      data = {};
+    }
+    
+    if (!data.invitation_id) {
+      if (data.token) router.push(`/invite/${data.token}`);
+      return;
+    }
+
+    setProcessingId(notif.id);
+    try {
+      const res = await fetch(`/api/invitations/${data.invitation_id}/accept`, { method: 'POST' });
+      const json = await res.json();
+      
+      if (res.ok) {
+        markRead(notif.id);
+        toast.success('Joined pact successfully!');
+        if (notif.pact_id) {
+          router.push(`/pacts/${notif.pact_id}`);
+        } else {
+          toast.error('Pact ID not found in notification');
+        }
+      } else {
+        toast.error(json.error || 'Failed to join pact');
+      }
+    } catch (e) {
+      console.error('Failed to accept invite:', e);
+      toast.error('An error occurred');
+    } finally {
+      setProcessingId(null);
+    }
+  };
+
+  const handleDeclineInvite = async (notif: Notification) => {
+    let data: { invitation_id?: string } = {};
+    try {
+      data = notif.data ? JSON.parse(notif.data) : {};
+    } catch (e) {
+      console.warn('Failed to parse notification data:', e);
+      data = {};
+    }
+    
+    if (!data.invitation_id) {
+      toast.error('Cannot decline: missing invitation ID');
+      return;
+    }
+
+    setProcessingId(notif.id);
+    try {
+      const res = await fetch(`/api/invitations/${data.invitation_id}/decline`, { method: 'POST' });
+      if (res.ok) {
+        markRead(notif.id);
+        toast.success('Invitation declined');
+      } else {
+        const json = await res.json();
+        toast.error(json.error || 'Failed to decline');
+      }
+    } catch (e) {
+      console.error('Failed to decline invite:', e);
+      toast.error('An error occurred');
+    } finally {
+      setProcessingId(null);
     }
   };
 
@@ -173,6 +253,7 @@ export default function NotificationsPage() {
                                 onClick={(e) => { e.stopPropagation(); handleAcceptNextSprint(n.id); }}
                                 size="sm"
                                 className="flex-1"
+                                loading={processingId === n.id}
                               >
                                 Accept
                               </Button>
@@ -181,8 +262,52 @@ export default function NotificationsPage() {
                                 variant="secondary"
                                 size="sm"
                                 className="flex-1"
+                                disabled={processingId === n.id}
                               >
                                 Exit
+                              </Button>
+                            </div>
+                          )}
+
+                          {/* Action buttons for invite_received */}
+                          {n.type === 'invite_received' && !n.is_read && (
+                            <div className="flex gap-2 mt-3">
+                              <Button
+                                onClick={(e) => { e.stopPropagation(); handleAcceptInvite(n); }}
+                                size="sm"
+                                className="flex-1"
+                                loading={processingId === n.id}
+                              >
+                                Accept
+                              </Button>
+                              <Button
+                                onClick={(e) => { e.stopPropagation(); handleDeclineInvite(n); }}
+                                variant="secondary"
+                                size="sm"
+                                className="flex-1"
+                                disabled={processingId === n.id}
+                              >
+                                Decline
+                              </Button>
+                            </div>
+                          )}
+
+                          {n.type === 'invite_received' && n.is_read && (
+                            <div className="mt-3">
+                              <Button
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  if (n.pact_id) {
+                                    router.push(`/pacts/${n.pact_id}`);
+                                  } else {
+                                    toast.error('Pact ID not found in notification');
+                                  }
+                                }}
+                                variant="secondary"
+                                size="sm"
+                                className="w-full sm:w-auto"
+                              >
+                                View Pact
                               </Button>
                             </div>
                           )}

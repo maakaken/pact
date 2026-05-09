@@ -7,11 +7,11 @@ export async function POST(request: NextRequest) {
   try {
     console.log('[invitations/send] Request received');
     
-    const { pact_id, emails } = await request.json()
+    const { pact_id, emails, usernames } = await request.json()
 
-    if (!pact_id || !emails?.length) {
-      console.error('[invitations/send] Missing required fields:', { pact_id: !!pact_id, emails: emails?.length });
-      return NextResponse.json({ error: 'Missing required fields: pact_id, emails' }, { status: 400 });
+    if (!pact_id || (!emails?.length && !usernames?.length)) {
+      console.error('[invitations/send] Missing required fields:', { pact_id: !!pact_id, emails: emails?.length, usernames: usernames?.length });
+      return NextResponse.json({ error: 'Missing required fields: pact_id, and either emails or usernames' }, { status: 400 });
     }
 
     // Get user from session using SSR client
@@ -40,6 +40,15 @@ export async function POST(request: NextRequest) {
       process.env.SUPABASE_SERVICE_ROLE_KEY!
     );
 
+    // Get inviter's profile for notification body
+    const { data: inviterProfile } = await serviceClient
+      .from('profiles')
+      .select('username, full_name')
+      .eq('id', user.id)
+      .single();
+
+    const inviterName = inviterProfile?.full_name || inviterProfile?.username || 'Someone';
+
     // Get pact details
     const { data: pact, error: pactError } = await serviceClient
       .from('pacts')
@@ -51,39 +60,109 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Pact not found' }, { status: 404 });
     }
 
-    // Create invitation records
-    const invitations = emails.map((email: string) => ({
-      pact_id,
-      invited_by: user.id,
-      email,
-      token: crypto.randomUUID(), // Generate unique token
-      expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(), // 7 days
-    }));
+    // 1. Process and Insert Invitations
+    const invitationData: any[] = [];
+    const usernameMap = new Map<string, string>(); // username -> invited_user_id
 
-    const { data: created, error } = await serviceClient
+    // Email Invitations
+    if (emails?.length) {
+      emails.forEach((email: string) => {
+        invitationData.push({
+          pact_id,
+          invited_by: user.id,
+          email,
+          invitation_type: 'email',
+          token: crypto.randomUUID(),
+          expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+        });
+      });
+    }
+
+    // Username Invitations
+    let invalidUsernames: string[] = [];
+    
+    if (usernames?.length) {
+      const { data: profiles } = await serviceClient
+        .from('profiles')
+        .select('id, username')
+        .in('username', usernames.map((u: string) => u.toLowerCase()));
+
+      profiles?.forEach(p => usernameMap.set(p.username.toLowerCase(), p.id));
+      
+      usernames.forEach((username: string) => {
+        const invitedUserId = usernameMap.get(username.toLowerCase());
+        if (invitedUserId && invitedUserId !== user.id) {
+          invitationData.push({
+            pact_id,
+            invited_by: user.id,
+            invited_user_id: invitedUserId,
+            invitation_type: 'username',
+            token: crypto.randomUUID(),
+            expires_at: new Date(Date.now() + 7 * 24 * 60 * 60 * 1000).toISOString(),
+          });
+        } else if (!invitedUserId) {
+          invalidUsernames.push(username);
+        }
+      });
+    }
+
+    if (invitationData.length === 0) {
+      return NextResponse.json({ error: 'No valid recipients found' }, { status: 400 });
+    }
+
+    const { data: createdInvitations, error: inviteError } = await serviceClient
       .from('invitations')
-      .insert(invitations)
+      .insert(invitationData)
       .select();
 
-    if (error) {
-      console.error('[invitations/send] Database error:', error);
-      return NextResponse.json({ error: error.message }, { status: 500 });
+    if (inviteError) {
+      console.error('[invitations/send] Database error (invites):', inviteError);
+      return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    }
+
+    // 2. Create Notifications for username-based invites
+    const notifications = (createdInvitations ?? [])
+      .filter(inv => inv.invitation_type === 'username' && inv.invited_user_id)
+      .map(inv => ({
+        user_id: inv.invited_user_id,
+        type: 'invite_received',
+        title: 'Pact Invitation',
+        body: `${inviterName} invited you to join "${pact.name}"`,
+        pact_id,
+        data: JSON.stringify({ 
+          token: inv.token,
+          invitation_id: inv.id 
+        }),
+      }));
+
+    if (notifications.length > 0) {
+      const { error: notifError } = await serviceClient
+        .from('notifications')
+        .insert(notifications);
+
+      if (notifError) {
+        console.error('[invitations/send] Database error (notifications):', notifError);
+      }
     }
 
     // Get base URL for invite links
     const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 'http://localhost:3000'
 
-    // Return the invite links (in prototype, copy-paste links instead of emails)
-    const inviteLinks = (created ?? []).map((inv: { email: string; token: string }) => ({
-      email: inv.email,
-      token: inv.token,
-      link: `${baseUrl}/invite/${inv.token}`,
-    }));
+    // Return the invite links (for email ones especially)
+    const inviteLinks = (createdInvitations ?? [])
+      .filter(inv => inv.invitation_type === 'email')
+      .map((inv: { email: string; token: string }) => ({
+        email: inv.email,
+        token: inv.token,
+        link: `${baseUrl}/invite/${inv.token}`,
+      }));
 
     return NextResponse.json({ 
       success: true,
       inviteLinks, 
-      pactName: pact.name 
+      pactName: pact.name,
+      invitedCount: createdInvitations?.length || 0,
+      invalidUsernames: invalidUsernames.length > 0 ? invalidUsernames : undefined
     });
   } catch (error) {
     console.error('[invitations/send] Unhandled error:', error);
