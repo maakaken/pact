@@ -418,7 +418,7 @@ export default function LockerPage() {
 
                 <Badge variant="pending">Under Moderation Review</Badge>
               </Card>
-            ) : (
+            ) : msRemaining > 0 ? (
               /* Submission form */
               <Card className="space-y-5">
                 {/* File upload */}
@@ -508,6 +508,12 @@ export default function LockerPage() {
                 >
                   Submit Proof
                 </Button>
+              </Card>
+            ) : (
+              /* Sprint ended - no submission allowed */
+              <Card className="text-center py-8">
+                <p className="text-sm font-semibold text-[#E07A5F] mb-2">Sprint Has Ended</p>
+                <p className="text-xs text-[#8FA38F]">The submission period has closed. Please wait for the verdict phase to begin.</p>
               </Card>
             )}
           </section>

@@ -37,15 +37,19 @@ function ctaForPact(
   pactId: string,
   sprintId: string | undefined,
   hasGoal: boolean,
-  hasSubmission: boolean
+  hasSubmission: boolean,
+  sprintEndsAt: string | null | undefined
 ): { label: string; href: string } | null {
+  // Check if sprint timer has ended
+  const sprintEnded = sprintEndsAt ? new Date(sprintEndsAt) < new Date() : false;
+  
   if (pactStatus === 'vetting') {
     return { label: hasGoal ? 'Check Goals' : 'Set Your Goal', href: `/pacts/${pactId}/vetting` };
   }
-  if (pactStatus === 'active' && !hasSubmission) {
+  if (pactStatus === 'active' && !hasSubmission && !sprintEnded) {
     return { label: 'Submit Proof', href: `/pacts/${pactId}/locker` };
   }
-  if (pactStatus === 'verdict') {
+  if (pactStatus === 'verdict' || sprintEnded) {
     return { label: 'Cast Your Vote', href: `/pacts/${pactId}/verdict` };
   }
   return null;
@@ -630,7 +634,7 @@ export default function PactOverviewPage() {
   const categoryColor = getCategoryColor(pact?.category ?? null);
   const sprint = pact?.currentSprint ?? null;
   const sprintPct = sprint ? getSprintProgress(sprint.starts_at, sprint.ends_at) : 0;
-  const ctaAction = pact ? ctaForPact(pact.status, pactId, sprint?.id, !!myGoal, hasSubmission) : null;
+  const ctaAction = pact ? ctaForPact(pact.status, pactId, sprint?.id, !!myGoal, hasSubmission, sprint?.ends_at) : null;
   const activePactList = pact ? [{ id: pact.id, name: pact.name }] : [];
 
   // Tabs available
@@ -806,10 +810,10 @@ export default function PactOverviewPage() {
                     Sprint {pact?.current_sprint}
                   </p>
                   <p className="text-sm font-semibold text-[#1B1F1A] mt-0.5">
-                    {sprint.status === 'completed' ? 'Sprint Completed' : 'In Progress'}
+                    {sprint.status === 'completed' || (sprint.ends_at && new Date(sprint.ends_at) < new Date()) ? 'Sprint Completed' : 'In Progress'}
                   </p>
                 </div>
-                {sprint.status !== 'completed' && (
+                {sprint.status !== 'completed' && (!sprint.ends_at || new Date(sprint.ends_at) >= new Date()) && (
                   <div className="text-right">
                     <p className="text-[10px] text-[#8FA38F] uppercase tracking-wide mb-1">Time Remaining</p>
                     <CountdownTimer endDate={sprint.ends_at} size="sm" />
@@ -817,7 +821,7 @@ export default function PactOverviewPage() {
                 )}
               </div>
 
-              <ProgressBar value={sprint.status === 'completed' ? 100 : sprintPct} label="Sprint Progress" showPercent />
+              <ProgressBar value={sprint.status === 'completed' || (sprint.ends_at && new Date(sprint.ends_at) < new Date()) ? 100 : sprintPct} label="Sprint Progress" showPercent />
 
               {/* My goal */}
               {myGoal && (
@@ -841,7 +845,7 @@ export default function PactOverviewPage() {
               )}
 
               {/* TEMP: Force End Sprint Button */}
-              {isAdmin && sprint && sprint.status !== 'completed' && sprint.status !== 'verdict_phase' && (
+              {isAdmin && sprint && sprint.status !== 'completed' && sprint.status !== 'verdict_phase' && (!sprint.ends_at || new Date(sprint.ends_at) >= new Date()) && (
                 <Button
                   onClick={handleForceCompleteSprint}
                   loading={forceCompletingSprint}

@@ -42,6 +42,24 @@ export async function POST(request: NextRequest) {
             continue;
           }
 
+          // Send verdict_open notifications to all pact members (matching force-end-sprint behavior)
+          const { data: allMembers } = await supabase
+            .from('pact_members')
+            .select('user_id')
+            .eq('pact_id', sprint.pact_id)
+            .eq('status', 'active');
+
+          if (allMembers) {
+            const notifications = allMembers.map(m => ({
+              user_id: m.user_id,
+              type: 'verdict_open',
+              title: 'Verdict Phase Open',
+              body: 'The sprint has ended. Review submissions and cast your votes.',
+              pact_id: sprint.pact_id,
+            }));
+            await supabase.from('notifications').insert(notifications);
+          }
+
           results.push({ sprint_id: sprint.id, status: 'transitioned_to_verdict' });
         } catch (err) {
           results.push({ sprint_id: sprint.id, status: 'error', error: String(err) });

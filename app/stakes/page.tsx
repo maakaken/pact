@@ -67,10 +67,19 @@ export default function StakesPage() {
 
   const getPactCTA = (stake: StakeWithDetails) => {
     const pact = stake.pacts;
+    const sprint = stake.sprints;
     if (!pact) return null;
+    
+    // Check if sprint timer has ended
+    const sprintEnded = sprint?.ends_at ? new Date(sprint.ends_at) < new Date() : false;
+    
     switch (pact.status) {
       case 'vetting': return { label: 'Review Goals', href: `/pacts/${pact.id}/vetting` };
-      case 'active': return { label: 'Submit Proof', href: `/pacts/${pact.id}/locker` };
+      case 'active': 
+        if (sprintEnded) {
+          return { label: 'Cast Vote', href: `/pacts/${pact.id}/verdict` };
+        }
+        return { label: 'Submit Proof', href: `/pacts/${pact.id}/locker` };
       case 'verdict': return { label: 'Cast Vote', href: `/pacts/${pact.id}/verdict` };
       default: return { label: 'View Pact', href: `/pacts/${pact.id}` };
     }
