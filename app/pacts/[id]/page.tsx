@@ -18,6 +18,7 @@ import ProgressBar from '@/components/ui/ProgressBar';
 import Skeleton from '@/components/ui/Skeleton';
 import { formatTimeAgo, formatCurrency, getCategoryColor, cn } from '@/lib/utils';
 import type { Notification, Goal, PactMember, Profile } from '@/types';
+import UserTagInput from '@/components/ui/UserTagInput';
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
 type TabKey = 'members' | 'activity' | 'applications' | 'settings' | 'moderation' | 'results';
@@ -103,6 +104,8 @@ export default function PactOverviewPage() {
   const [deletingPact, setDeletingPact] = useState(false);
   const [deleteMessage, setDeleteMessage] = useState<string | null>(null);
   const [showDeleteModal, setShowDeleteModal] = useState(false);
+  const [inviteTags, setInviteTags] = useState<any[]>([]);
+  const [invitingMembers, setInvitingMembers] = useState(false);
   const realtimeRef = useRef<ReturnType<ReturnType<typeof createClient>['channel']> | null>(null);
 
   // Auth guard - removed since server-side auth handles it
@@ -570,6 +573,49 @@ export default function PactOverviewPage() {
       setDeleteMessage('Failed to delete pact');
     } finally {
       setDeletingPact(false);
+    }
+  };
+
+  const handleSendInvitations = async () => {
+    if (!pact || !user) return;
+    setInvitingMembers(true);
+    
+    try {
+      const validTags = inviteTags.filter(t => t.status === 'valid');
+      if (validTags.length === 0) {
+        alert('Please add valid usernames or emails to invite');
+        return;
+      }
+
+      const emails = validTags.filter(t => t.type === 'email').map(t => t.value);
+      const usernames = validTags.filter(t => t.type === 'username').map(t => t.value);
+      
+      const res = await fetch('/api/invitations/send', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          pact_id: pactId,
+          emails,
+          usernames,
+        }),
+      });
+
+      const json = await res.json();
+
+      if (res.ok) {
+        const invitedCount = Number(json?.invitedCount) || 0;
+        alert(`${invitedCount} invitation(s) sent successfully!`);
+        setInviteTags([]);
+        // Refresh pact data to show updated members
+        await refetchPact();
+      } else {
+        alert(json.error || 'Failed to send invitations');
+      }
+    } catch (e) {
+      console.error('Failed to send invitations:', e);
+      alert('Failed to send invitations. Please try again.');
+    } finally {
+      setInvitingMembers(false);
     }
   };
 
@@ -1185,7 +1231,7 @@ export default function PactOverviewPage() {
                 <div className="grid sm:grid-cols-2 gap-4">
                   <div className="bg-[#F5F7F0] rounded-[12px] p-4">
                     <p className="text-[11px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Visibility</p>
-                    <p className="text-sm font-semibold text-[#1B1F1A] capitalize">{pact.is_public ? 'Public' : 'Private'}</p>
+                    <p className="text-sm font-semibold text-[#1B1F1A] capitalize">{pact.is_public ? 'Public (Marketplace)' : 'Private'}</p>
                   </div>
                   <div className="bg-[#F5F7F0] rounded-[12px] p-4">
                     <p className="text-[11px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Sprint Type</p>
@@ -1198,6 +1244,50 @@ export default function PactOverviewPage() {
                   <div className="bg-[#F5F7F0] rounded-[12px] p-4">
                     <p className="text-[11px] text-[#8FA38F] uppercase tracking-wider font-medium mb-1">Max Members</p>
                     <p className="text-sm font-semibold text-[#1B1F1A]">{pact.max_members}</p>
+                  </div>
+                </div>
+
+                {/* Invite Members Section */}
+                <div>
+                  <h4 className="text-sm font-semibold text-[#1B1F1A] mb-3">Invite More Members</h4>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-sm font-medium text-[#1B1F1A] block mb-2">Invite Members</label>
+                      <UserTagInput 
+                        tags={inviteTags} 
+                        setTags={setInviteTags} 
+                        placeholder="Type usernames or emails (comma/space to add)" 
+                      />
+                      <p className="text-xs text-[#8FA38F] mt-2">
+                        Enter multiple usernames or emails. Valid usernames will show the user's avatar.
+                      </p>
+                    </div>
+
+                    {/* Preview avatars */}
+                    {inviteTags.some(t => t.status === 'valid') && (
+                      <div>
+                        <label className="text-sm font-medium text-[#1B1F1A] block mb-3">Invited Members Preview</label>
+                        <div className="flex flex-wrap gap-3">
+                          {inviteTags.filter(t => t.status === 'valid').map((tag) => (
+                            <div key={tag.id} className="flex flex-col items-center gap-1.5">
+                              <Avatar name={tag.value} src={tag.profile?.avatar_url} size="md" />
+                              <span className="text-[10px] text-[#5C6B5E] max-w-[64px] truncate text-center">
+                                {tag.profile?.full_name || tag.value.split('@')[0]}
+                              </span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+
+                    <Button
+                      onClick={handleSendInvitations}
+                      loading={invitingMembers}
+                      disabled={inviteTags.filter(t => t.status === 'valid').length === 0}
+                      className="w-full"
+                    >
+                      Send Invitations
+                    </Button>
                   </div>
                 </div>
               </Card>

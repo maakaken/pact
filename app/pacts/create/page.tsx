@@ -41,7 +41,6 @@ interface WizardFormValues {
   sprintType: SprintType;
   customDays: string;
   visibility: Visibility;
-  openToMarketplace: boolean;
   maxMembers: number;
   stakeAmount: string;
 }
@@ -130,7 +129,6 @@ export default function CreatePactPage() {
       sprintType: 'weekly',
       customDays: '14',
       visibility: 'private',
-      openToMarketplace: false,
       maxMembers: 6,
       stakeAmount: '500',
     },
@@ -212,7 +210,7 @@ export default function CreatePactPage() {
         name: vals.name,
         mission: vals.mission || undefined,
         category: vals.category,
-        is_public: vals.openToMarketplace,
+        is_public: vals.visibility === 'public',
         sprint_type: vals.sprintType,
         sprint_duration_days: sprintDays,
         stake_amount: parseFloat(vals.stakeAmount) || 500,
@@ -460,7 +458,7 @@ export default function CreatePactPage() {
                     <TogglePair
                       options={[
                         { value: 'private', label: 'Private' },
-                        { value: 'public', label: 'Public' },
+                        { value: 'public', label: 'Public (Marketplace)' },
                       ]}
                       value={field.value}
                       onChange={field.onChange}
@@ -527,39 +525,7 @@ export default function CreatePactPage() {
                 </div>
               )}
 
-              {/* Marketplace open toggle */}
-              {visibility === 'public' && (
-                <Controller
-                  control={control}
-                  name="openToMarketplace"
-                  render={({ field }) => (
-                    <label className="flex items-start gap-3 cursor-pointer p-3 rounded-[12px] border border-[#E0EBE1] bg-[#FAFAFA] hover:bg-[#F0FAF2] transition-all">
-                      <div className="relative mt-0.5">
-                        <input
-                          type="checkbox"
-                          className="sr-only"
-                          checked={field.value}
-                          onChange={field.onChange}
-                        />
-                        <div className={cn(
-                          'w-10 h-5 rounded-full transition-all',
-                          field.value ? 'bg-[#1B4332]' : 'bg-[#D0D7CF]'
-                        )}>
-                          <div className={cn(
-                            'w-4 h-4 bg-white rounded-full shadow absolute top-0.5 transition-all',
-                            field.value ? 'left-5' : 'left-0.5'
-                          )} />
-                        </div>
-                      </div>
-                      <div>
-                        <p className="text-sm font-semibold text-[#1B1F1A]">Open to Marketplace Applications</p>
-                        <p className="text-xs text-[#5C6B5E] mt-0.5">Allow anyone browsing the Marketplace to apply to join this pact.</p>
-                      </div>
-                    </label>
-                  )}
-                />
-              )}
-
+              
               {/* Max members */}
               <div>
                 <label className="text-sm font-medium text-[#1B1F1A] block mb-1">
